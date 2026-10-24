@@ -1,8 +1,9 @@
 import { useState } from 'preact/hooks';
-import { Cpu, Download, HardDrive, KeyRound, MemoryStick, Power, Router, Thermometer } from 'lucide-preact';
+import { Cpu, HardDrive, KeyRound, MemoryStick, Power, Router, Thermometer } from 'lucide-preact';
 import { post, usePoll, type SystemStats, type WAN } from '../api';
 import { L, bytes, duration, lang, num, pct } from '../i18n';
 import { LedCard } from './Led';
+import { BackupCard, UpdateCard } from './Maintenance';
 import { Btn, Card, CardHead, Field, Meter, PageHead, Password, Skeleton, confirmDialog, run, toast } from '../ui';
 
 interface SysResp { system: SystemStats; wan: WAN; version: string }
@@ -57,7 +58,6 @@ export function System() {
             <div class="kv"><span class="k">{L('نوع اتصال', 'WAN type')}</span><span class="v mono">{data.wan.proto || '—'}</span></div>
           </div>
           <div class="card-foot">
-            <Btn onClick={() => { location.href = '/api/system/backup'; }}><Download size={17} />{L('دانلود پشتیبان تنظیمات', 'Download settings backup')}</Btn>
             <Btn kind="danger" onClick={async () => {
               if (await confirmDialog(L('روتر راه‌اندازی مجدد شود؟ حدود یک دقیقه اینترنت قطع می‌شود.', 'Restart the router? Internet drops for about a minute.'), true)) {
                 run(() => post('/system/reboot'), L('در حال راه‌اندازی مجدد…', 'Restarting…'));
@@ -83,6 +83,10 @@ export function System() {
             }}>{L('تغییر رمز', 'Change password')}</Btn>
           </div>
         </Card>
+      </div>
+      <div class="grid g2">
+        <UpdateCard />
+        <BackupCard />
       </div>
       <LedCard />
     </div>

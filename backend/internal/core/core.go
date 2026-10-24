@@ -4,6 +4,7 @@ package core
 
 import (
 	"encoding/json"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -147,8 +148,16 @@ func (c *Core) applySQM(cfg *config.Config) {
 	}
 }
 
+// RestartMarker exists while the updater restarts the panel; the firewall
+// and DNS are then left in place so traffic can't leak around the tunnel.
+const RestartMarker = "/tmp/separ-restarting"
+
 func (c *Core) Shutdown() {
 	c.Proxy.Stop()
+	if _, err := os.Stat(RestartMarker); err == nil {
+		os.Remove(RestartMarker)
+		return
+	}
 	gaming.RemoveSQM(c.Sampler.WAN().Device)
 	fw.Remove()
 	dnsctl.Remove()
