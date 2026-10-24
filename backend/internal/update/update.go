@@ -173,10 +173,12 @@ if [ $ok = 1 ]; then
 else
 	touch /tmp/separ-restarting
 	/etc/init.d/separ stop
-	cp /usr/bin/separ.prev /usr/bin/separ
+	sleep 3
+	cp /usr/bin/separ.prev /usr/bin/separ.new && mv -f /usr/bin/separ.new /usr/bin/separ
 	/etc/init.d/separ start
 	echo "{\"ok\":false,\"from\":\"$OLD\",\"to\":\"$NEW\",\"error\":\"new version did not start; rolled back\",\"at\":$(date +%s)}" > /etc/separ/update-result.json
 fi
+cp "$DIR/update.log" /etc/separ/update.log 2>/dev/null
 rm -rf "$DIR/separ"
 `
 

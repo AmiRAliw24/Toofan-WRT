@@ -32,6 +32,7 @@ export function go(r: Route) {
 
 /** Shared overview, polled once for the whole app. */
 export const overview = signal<Overview | null>(null);
+export const noPassword = signal(false);
 let refreshers: (() => void)[] = [];
 export function onRefresh(f: () => void) {
   refreshers.push(f);
@@ -139,7 +140,7 @@ export function App() {
       window.scrollTo(0, 0);
     };
     window.addEventListener('hashchange', onHash);
-    get('/ping').catch(() => {});
+    get<{ noPassword?: boolean }>('/ping').then((d) => (noPassword.value = !!d.noPassword)).catch(() => {});
     // Probe the session.
     get('/overview')
       .then((o) => {
@@ -227,7 +228,16 @@ export function App() {
             <RefreshCw size={18} />
           </Btn>
         </header>
-        <main class="content">{page}</main>
+        <main class="content">
+          {noPassword.value && (
+            <div class="callout danger" style="margin-bottom:18px">
+              <div><b>{L('روتر رمز ندارد!', 'The router has no password!')}</b>
+                {L('هر کسی در شبکه می‌تواند وارد پنل شود. از صفحهٔ سیستم یک رمز بگذارید.', 'Anyone on your network can open this panel. Set a password on the System page.')}{' '}
+                <a href="#/system">{L('رفتن به سیستم', 'Go to System')}</a></div>
+            </div>
+          )}
+          {page}
+        </main>
       </div>
       <nav class="mobile-bar">
         {(['home', 'proxy', 'devices', 'wifi'] as Route[]).map((id) => {

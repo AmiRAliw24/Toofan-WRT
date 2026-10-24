@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -93,6 +95,25 @@ func checkPassword(pw string) bool {
 	}
 	env.Ubus("session", "destroy", `{"ubus_rpc_session":"`+r.Session+`"}`)
 	return true
+}
+
+// rootHasNoPassword is true on a fresh or reset OpenWrt, where root logs in
+// with an empty password until one is set.
+func rootHasNoPassword() bool {
+	if env.Mock {
+		return false
+	}
+	b, err := os.ReadFile("/etc/shadow")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) > 1 && f[0] == "root" {
+			return f[1] == ""
+		}
+	}
+	return false
 }
 
 func clientIP(r *http.Request) string {

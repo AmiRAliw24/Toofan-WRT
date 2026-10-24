@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Cpu, HardDrive, KeyRound, MemoryStick, Power, Router, Thermometer } from 'lucide-preact';
+import { noPassword } from '../app';
 import { post, usePoll, type SystemStats, type WAN } from '../api';
 import { L, bytes, duration, lang, num, pct } from '../i18n';
 import { LedCard } from './Led';
@@ -75,12 +76,12 @@ export function System() {
             <Field label={L('تکرار رمز جدید', 'Repeat new password')}><Password value={pw2} onInput={setPw2} /></Field>
           </div>
           <div class="card-foot">
-            <Btn kind="primary" busy={busy} disabled={!cur || pw.length < 8} onClick={async () => {
+            <Btn kind="primary" busy={busy} disabled={pw.length < 8} onClick={async () => {
               if (pw !== pw2) { toast(L('تکرار رمز یکسان نیست', 'Passwords don’t match'), true); return; }
               setBusy(true);
               const ok = await run(() => post('/system/password', { current: cur, password: pw }), L('رمز تغییر کرد', 'Password changed'));
               setBusy(false);
-              if (ok) { setCur(''); setPw(''); setPw2(''); }
+              if (ok) { setCur(''); setPw(''); setPw2(''); noPassword.value = false; }
             }}>{L('تغییر رمز', 'Change password')}</Btn>
           </div>
         </Card>

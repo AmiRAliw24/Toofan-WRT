@@ -84,7 +84,7 @@ func (s *Server) Handler() http.Handler {
 	root.HandleFunc("POST /api/login", s.handleLogin)
 	root.HandleFunc("POST /api/logout", s.handleLogout)
 	root.HandleFunc("GET /api/ping", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"ok": true, "version": s.Version, "lang": s.core.Store.Get().Lang})
+		writeJSON(w, map[string]any{"ok": true, "version": s.Version, "lang": s.core.Store.Get().Lang, "noPassword": rootHasNoPassword()})
 	})
 	root.Handle("/api/", s.requireAuth(api))
 	root.Handle("/", s.static())
