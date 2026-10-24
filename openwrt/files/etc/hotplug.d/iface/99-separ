@@ -1,6 +1,6 @@
 #!/bin/sh
-# Re-sync the panel's firewall/DNS when the WAN comes up (new ISP DNS, etc.).
+# Re-sync the panel's firewall/DNS when an uplink comes up (new ISP DNS, etc.).
 [ "$ACTION" = ifup ] || exit 0
-[ "$INTERFACE" = wan ] || exit 0
+case "$INTERFACE" in wan|wwan) ;; *) exit 0 ;; esac
 /etc/init.d/separ enabled && /etc/init.d/separ running && kill -HUP "$(pidof separ)" 2>/dev/null
 exit 0

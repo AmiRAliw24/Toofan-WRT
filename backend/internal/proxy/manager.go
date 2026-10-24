@@ -121,7 +121,7 @@ func (m *Manager) Status() Status {
 	st := Status{
 		Enabled: cfg.Proxy.Enabled, Mode: m.mode, ActiveID: m.activeID, LatencyMs: m.latency,
 		Fails: m.fails, LastError: m.lastErr, Testing: m.testing,
-		Events: append([]Event{}, m.events...),
+		Events: append(make([]Event, 0, len(m.events)), m.events...),
 	}
 	if !m.checkedAt.IsZero() {
 		st.CheckedAt = m.checkedAt.Unix()

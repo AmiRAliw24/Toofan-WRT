@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useErrorBoundary, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import {
   Bell, Globe, Home as HomeIcon, Languages, LogOut, Menu, Moon, RefreshCw, Settings, Shield,
@@ -107,6 +107,24 @@ function NavItem(p: { n: NavDef; active: boolean; onClick: () => void }) {
       {extra}
     </button>
   );
+}
+
+/** PageBoundary keeps a crash in one page from freezing the whole panel. */
+function PageBoundary(p: { children: ComponentChildren }) {
+  const [error, reset] = useErrorBoundary((e) => console.error(e));
+  if (error) {
+    return (
+      <div class="card card-pad stack" style="align-items:flex-start">
+        <div class="card-title">{L('این صفحه با خطا روبه‌رو شد', 'This page hit an error')}</div>
+        <div class="small muted mono">{String((error as Error).message || error)}</div>
+        <div class="row">
+          <Btn kind="primary" onClick={reset}>{L('تلاش دوباره', 'Try again')}</Btn>
+          <Btn onClick={() => location.reload()}>{L('بارگذاری مجدد', 'Reload')}</Btn>
+        </div>
+      </div>
+    );
+  }
+  return <>{p.children}</>;
 }
 
 function Events(p: { onClose: () => void }) {
@@ -236,7 +254,7 @@ export function App() {
                 <a href="#/system">{L('رفتن به سیستم', 'Go to System')}</a></div>
             </div>
           )}
-          {page}
+          <PageBoundary key={r}>{page}</PageBoundary>
         </main>
       </div>
       <nav class="mobile-bar">
