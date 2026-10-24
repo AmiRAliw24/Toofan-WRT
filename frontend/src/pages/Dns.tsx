@@ -106,7 +106,7 @@ export function Dns() {
       <Card>
         <CardHead icon={<EyeOff size={20} />} tone="info" title={L('حریم خصوصی', 'Privacy')} />
         <div class="card-body" style="padding-block:0">
-          <Setting title={L('ثبت سایت‌های بازشده', 'Log visited sites')} desc={L('به‌طور پیش‌فرض خاموش است. اگر روشن شود فقط در حافظهٔ موقت می‌ماند و با خاموش شدن روتر پاک می‌شود.', 'Off by default. When on, it stays in RAM only and is erased on reboot.')}>
+          <Setting title={L('ثبت سایت‌های بازشده', 'Log visited sites')} desc={<>{L('به‌طور پیش‌فرض خاموش است و فقط در حافظهٔ موقت می‌ماند. فهرست سایت‌های هر دستگاه در ', 'Off by default and kept in RAM only. Each device’s sites are on the ')}<a href="#/devices">{L('صفحهٔ دستگاه‌ها', 'Devices page')}</a>{L(' است.', '.')}</>}>
             <Toggle on={c.logSites} onChange={(v) => save({ logSites: v })} />
           </Setting>
         </div>

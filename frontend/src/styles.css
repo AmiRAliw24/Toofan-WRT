@@ -652,3 +652,25 @@ details.adv > div { padding: 4px 14px 12px; }
 @media (forced-colors: active) {
   .toggle .track, .badge, .dot { forced-color-adjust: none; }
 }
+
+/* ---- device details & site log ---- */
+.stat-mini { gap: 10px; }
+.stat-mini > div { background: var(--bg-sunken); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; min-width: 0; }
+@media (max-width: 640px) { .stat-mini { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } .stat-mini > div { padding: 8px; } }
+.usage-bars { display: flex; align-items: stretch; gap: 2px; height: 96px; direction: ltr; border-bottom: 1px solid var(--chart-grid); cursor: crosshair; }
+.usage-bars .ub { flex: 1; display: flex; align-items: flex-end; min-width: 0; }
+.usage-bars .ub span { width: 100%; background: var(--chart-1); border-radius: 4px 4px 0 0; }
+.usage-bars .ub.dim span { opacity: 0.45; }
+.chip-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; height: 32px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.chip:hover { border-color: var(--border-strong); }
+.chip.active { background: var(--primary-soft); border-color: var(--primary); color: var(--text); }
+.site-list { display: flex; flex-direction: column; max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.site-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 44px; }
+.site-row + .site-row { border-top: 1px solid var(--border); }
+.site-fav { width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0; display: grid; place-items: center;
+  background: var(--bg-sunken); color: var(--text-2); font-weight: 800; font-size: 13px; font-family: var(--mono); }
+.site-domain { font-size: 13.5px; text-align: start; }
+.site-when { min-width: 72px; text-align: end; white-space: nowrap; }
+@media (max-width: 480px) { .site-when { min-width: 0; } }

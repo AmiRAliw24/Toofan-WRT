@@ -35,7 +35,9 @@ func render(p Plan) string {
 		}
 	}
 	if p.LogQueries {
-		b.WriteString("log-queries=extra\n")
+		// Read back by the site log (logread); async so a busy log never
+		// slows down answers.
+		b.WriteString("log-queries\nlog-async=25\n")
 	}
 	return b.String()
 }
