@@ -19,15 +19,19 @@ cd ..
 cp -r openwrt/files openwrt/install.sh openwrt/uninstall.sh "$OUT/"
 
 # Offline package bundles, for routers that can't reach downloads.openwrt.org.
-for list in openwrt/offline-*.list; do
-	rel="${list#openwrt/offline-}"; rel="${rel%.list}"
-	mkdir -p "$OUT/pkgs/$rel"
-	grep -v '^#' "$list" | while read -r path; do
+# offline-*.list are required, optional-*.list enable extra features.
+bundle() { # list-file dest-subdir
+	rel="$(basename "$1" .list)"; rel="${rel#*-}"
+	mkdir -p "$OUT/pkgs/$rel/$2"
+	grep -v '^#' "$1" | while read -r path; do
 		[ -n "$path" ] || continue
 		f="openwrt/pkgs/$rel/$(basename "$path")"
 		[ -f "$f" ] || { mkdir -p "openwrt/pkgs/$rel"; curl -fsSL -o "$f" "https://downloads.openwrt.org/releases/$rel/$path"; }
-		cp "$f" "$OUT/pkgs/$rel/"
+		cp "$f" "$OUT/pkgs/$rel/$2"
 	done
-done
+}
+for list in openwrt/offline-*.list; do bundle "$list" .; done
+for list in openwrt/optional-*.list; do bundle "$list" optional; done
+
 tar -C dist -czf "dist/separ-$VERSION.tar.gz" separ
 ls -la dist

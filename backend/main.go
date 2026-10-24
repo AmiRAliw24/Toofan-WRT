@@ -5,9 +5,11 @@ import (
 	"flag"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"separ/internal/api"
@@ -38,6 +40,9 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 	c := core.New(store, *xray)
+	if _, port, err := net.SplitHostPort(*listen); err == nil {
+		c.PanelPort, _ = strconv.Atoi(port)
+	}
 	c.Start()
 
 	var web fs.FS
@@ -54,7 +59,7 @@ func main() {
 		for s := range sig {
 			if s == syscall.SIGHUP {
 				// Sent by the hotplug script when the WAN comes up.
-				c.RequestApply()
+				c.Reapply()
 				c.Proxy.Kick()
 				continue
 			}

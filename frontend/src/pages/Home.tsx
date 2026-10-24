@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import {
-  Activity, ArrowDown, ArrowUp, Building2, ChevronLeft, ChevronRight, Clock, Cpu, Gauge as GaugeIcon,
+  Activity, Gamepad2, ArrowDown, ArrowUp, Building2, ChevronLeft, ChevronRight, Clock, Cpu, Gauge as GaugeIcon,
   Globe, KeyRound, Power, RotateCw, Router, Server as ServerIcon, Shield, ShieldAlert, ShieldCheck,
   ShieldOff, Smartphone, Stethoscope, Users, Zap,
 } from 'lucide-preact';
@@ -208,8 +208,8 @@ export function Home() {
           <Quick icon={<Power size={24} />} label={proxyOn ? L('خاموش کردن فیلترشکن', 'Turn proxy off') : L('روشن کردن فیلترشکن', 'Turn proxy on')} onClick={toggleProxy} />
           <Quick icon={<KeyRound size={24} />} label={L('رمز وای‌فای', 'Wi-Fi password')} onClick={() => go('wifi')} />
           <Quick icon={<Users size={24} />} label={L('دستگاه‌ها', 'Devices')} onClick={() => go('devices')} />
-          <Quick icon={<ServerIcon size={24} />} label={L('سرورها', 'Servers')} onClick={() => go('proxy')} />
-          <Quick icon={<Stethoscope size={24} />} label={L('کیفیت خط', 'Line quality')} onClick={() => go('internet')} />
+          <Quick icon={<Gamepad2 size={24} />} label={L('بازی', 'Gaming')} onClick={() => go('gaming')} />
+          <Quick icon={<Stethoscope size={24} />} label={L('عیب‌یابی', 'Diagnose')} onClick={() => (location.hash = '/internet?diag')} />
           <Quick icon={<RotateCw size={24} />} label={L('راه‌اندازی مجدد', 'Restart')} onClick={async () => {
             if (await confirmDialog(L('روتر راه‌اندازی مجدد شود؟ حدود یک دقیقه اینترنت قطع می‌شود.', 'Restart the router? Internet drops for about a minute.'), true)) {
               run(() => post('/system/reboot'), L('در حال راه‌اندازی مجدد…', 'Restarting…'));

@@ -33,31 +33,45 @@ type Subscription struct {
 	Count     int    `json:"count"`
 }
 
-type WireGuard struct {
-	Config string `json:"config"` // wg-quick style config text
-}
-
-type OpenVPN struct {
-	Config   string `json:"config"` // .ovpn file contents
+// OpenVPNProfile is an imported .ovpn file; its server entry links to it
+// as openvpn://<id>.
+type OpenVPNProfile struct {
+	ID       string `json:"id"`
+	Config   string `json:"config"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
+// OpenVPNProfiles accepts the old single-object form (version 1) as empty.
+type OpenVPNProfiles []OpenVPNProfile
+
+func (p *OpenVPNProfiles) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || b[0] != '[' {
+		*p = nil
+		return nil
+	}
+	var list []OpenVPNProfile
+	if err := json.Unmarshal(b, &list); err != nil {
+		return err
+	}
+	*p = list
+	return nil
+}
+
 type Proxy struct {
-	Enabled       bool           `json:"enabled"`
-	Engine        string         `json:"engine"` // xray | wireguard | openvpn
-	Servers       []Server       `json:"servers"`
-	Subscriptions []Subscription `json:"subscriptions"`
-	ActiveID      string         `json:"activeId"`
-	PreferredID   string         `json:"preferredId"`
-	SplitIran     bool           `json:"splitIran"`
-	KillSwitch    bool           `json:"killSwitch"`
-	BlockIPv6     bool           `json:"blockIPv6"`
-	GuestProxy    bool           `json:"guestProxy"`
-	AutoBest      bool           `json:"autoBest"`
-	SubAutoUpdate bool           `json:"subAutoUpdate"`
-	WireGuard     WireGuard      `json:"wireguard"`
-	OpenVPN       OpenVPN        `json:"openvpn"`
+	Enabled       bool            `json:"enabled"`
+	Engine        string          `json:"engine"` // xray | wireguard | openvpn
+	Servers       []Server        `json:"servers"`
+	Subscriptions []Subscription  `json:"subscriptions"`
+	ActiveID      string          `json:"activeId"`
+	PreferredID   string          `json:"preferredId"`
+	SplitIran     bool            `json:"splitIran"`
+	KillSwitch    bool            `json:"killSwitch"`
+	BlockIPv6     bool            `json:"blockIPv6"`
+	GuestProxy    bool            `json:"guestProxy"`
+	AutoBest      bool            `json:"autoBest"`
+	SubAutoUpdate bool            `json:"subAutoUpdate"`
+	OpenVPN       OpenVPNProfiles `json:"openvpn"`
 }
 
 type Schedule struct {
@@ -97,6 +111,12 @@ type LED struct {
 	NightTo    string `json:"nightTo"`
 }
 
+type SQM struct {
+	Enabled  bool `json:"enabled"`
+	DownMbps int  `json:"downMbps"`
+	UpMbps   int  `json:"upMbps"`
+}
+
 type Config struct {
 	Lang      string            `json:"lang"`
 	Proxy     Proxy             `json:"proxy"`
@@ -105,6 +125,8 @@ type Config struct {
 	DNS       DNS               `json:"dns"`
 	LED       LED               `json:"led"`
 	LockWAN   bool              `json:"lockWan"` // panel/SSH unreachable from WAN
+	SmartWiFi bool              `json:"smartWifi"`
+	SQM       SQM               `json:"sqm"`
 }
 
 func Default() *Config {
@@ -120,6 +142,7 @@ func Default() *Config {
 		},
 		Devices: map[string]Device{},
 		DNS:     DNS{Provider: "isp", Mode: "udp"},
+		LockWAN: true,
 		LED:     LED{Mode: "auto", Color: "#00b894", Brightness: 60, NightFrom: "23:30", NightTo: "07:00"},
 	}
 }

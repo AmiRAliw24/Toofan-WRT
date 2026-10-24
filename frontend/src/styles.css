@@ -87,6 +87,8 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+input[type='range'], input[type='checkbox'] { accent-color: var(--primary); }
+input[type='range'] { width: 100%; }
 a { color: var(--primary); text-decoration: none; }
 .ltr { direction: ltr; unicode-bidi: isolate; }
 .mono { font-family: var(--mono); font-size: 0.86em; direction: ltr; unicode-bidi: isolate; }

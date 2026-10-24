@@ -21,6 +21,7 @@ func samplePlan() Plan {
 		},
 		Schedules:   []ScheduleRule{{MACs: []string{"8a:2f:11:42:9c:01"}, Days: []int{0, 1, 2, 3, 4}, From: "23:00", To: "07:00"}},
 		PriorityIPs: []string{"192.168.1.140"},
+		LockWAN:     true, WANDev: "wan", PanelPorts: []int{8080, 80},
 	}
 }
 

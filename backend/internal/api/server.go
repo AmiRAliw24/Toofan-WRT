@@ -49,6 +49,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/proxy/servers/{id}", s.proxyDeleteServer)
 	api.HandleFunc("POST /api/proxy/servers/delete", s.proxyDeleteServers)
 	api.HandleFunc("POST /api/proxy/select", s.proxySelect)
+	api.HandleFunc("POST /api/proxy/openvpn", s.proxyAddOpenVPN)
 	api.HandleFunc("POST /api/proxy/test", s.proxyTest)
 	api.HandleFunc("POST /api/proxy/subs", s.proxyAddSub)
 	api.HandleFunc("POST /api/proxy/subs/{id}/update", s.proxyUpdateSub)
@@ -69,6 +70,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/speedtest", s.speedGet)
 	api.HandleFunc("POST /api/speedtest", s.speedStart)
 
+	s.phase2Routes(api)
 	api.HandleFunc("GET /api/dns", s.dnsGet)
 	api.HandleFunc("POST /api/dns", s.dnsSet)
 
@@ -282,7 +284,9 @@ func (s *Server) proxyGet(w http.ResponseWriter, r *http.Request) {
 	for i := range cfg.Servers {
 		cfg.Servers[i].Link = ""
 	}
-	cfg.OpenVPN.Password = ""
+	for i := range cfg.OpenVPN {
+		cfg.OpenVPN[i].Password, cfg.OpenVPN[i].Config = "", ""
+	}
 	writeJSON(w, map[string]any{"config": cfg, "status": s.core.Proxy.Status()})
 }
 
@@ -305,14 +309,6 @@ func (s *Server) proxySettings(w http.ResponseWriter, r *http.Request) {
 		boolField("guestProxy", &p.GuestProxy)
 		boolField("autoBest", &p.AutoBest)
 		boolField("subAutoUpdate", &p.SubAutoUpdate)
-		if v, ok := in["engine"]; ok {
-			var e string
-			json.Unmarshal(v, &e)
-			if e != "xray" && e != "wireguard" && e != "openvpn" {
-				return errors.New("unknown engine")
-			}
-			p.Engine = e
-		}
 		return nil
 	}))
 }
@@ -378,6 +374,37 @@ func (s *Server) proxyAddServers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "added": added, "bad": bad})
 }
 
+func (s *Server) proxyAddOpenVPN(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name     string `json:"name"`
+		Config   string `json:"config"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	prof, srv, err := proxy.ImportOpenVPN(in.Config, strings.TrimSpace(in.Name), in.Username, in.Password)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	respond(w, s.core.Store.Update(func(c *config.Config) error {
+		for i, p := range c.Proxy.OpenVPN {
+			if p.ID == prof.ID {
+				c.Proxy.OpenVPN[i] = prof
+				return nil
+			}
+		}
+		c.Proxy.OpenVPN = append(c.Proxy.OpenVPN, prof)
+		c.Proxy.Servers = append(c.Proxy.Servers, srv)
+		if c.Proxy.ActiveID == "" {
+			c.Proxy.ActiveID = srv.ID
+		}
+		return nil
+	}))
+}
+
 func (s *Server) proxyDeleteServer(w http.ResponseWriter, r *http.Request) {
 	s.deleteServers(w, []string{r.PathValue("id")})
 }
@@ -413,6 +440,13 @@ func (s *Server) deleteServers(w http.ResponseWriter, ids []string) {
 			}
 		}
 		c.Proxy.Servers = kept
+		profs := c.Proxy.OpenVPN[:0]
+		for _, p := range c.Proxy.OpenVPN {
+			if !del[p.ID] {
+				profs = append(profs, p)
+			}
+		}
+		c.Proxy.OpenVPN = profs
 		if del[c.Proxy.PreferredID] {
 			c.Proxy.PreferredID = ""
 		}
@@ -662,7 +696,7 @@ func (s *Server) wifiGet(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, st)
+	writeJSON(w, map[string]any{"bands": st.Bands, "guest": st.Guest, "country": st.Country, "smartWifi": s.core.Store.Get().SmartWiFi})
 }
 
 func (s *Server) wifiSetBand(w http.ResponseWriter, r *http.Request) {
@@ -696,7 +730,7 @@ func (s *Server) quality(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) speedGet(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.speed.Get())
+	writeJSON(w, s.core.Speed.Get())
 }
 
 func (s *Server) speedStart(w http.ResponseWriter, r *http.Request) {
@@ -705,7 +739,7 @@ func (s *Server) speedStart(w http.ResponseWriter, r *http.Request) {
 	}
 	decode(w, r, &in)
 	tunnel := in.Via != "direct" && s.core.Proxy.Mode() == proxy.ModeConnected
-	if !s.speed.Start(tunnel) {
+	if !s.core.Speed.Start(tunnel) {
 		writeErr(w, http.StatusConflict, "a test is already running")
 		return
 	}
@@ -721,6 +755,7 @@ func (s *Server) dnsGet(w http.ResponseWriter, r *http.Request) {
 		"providers": proxy.Providers,
 		"tunnel":    s.core.Proxy.UseTunnelDNS(),
 		"isp":       s.core.Sampler.WAN().DNS,
+		"lockWan":   cfg.LockWAN,
 	})
 }
 

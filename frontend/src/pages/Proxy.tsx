@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
-  Check, Gauge, Link2, ListChecks, Plus, Power, RefreshCw, ScrollText, Server as ServerIcon, ShieldCheck,
+  Check, FileUp, Gauge, Link2, ListChecks, Plus, Power, RefreshCw, ScrollText, Server as ServerIcon, ShieldCheck,
   ShieldHalf, Split, Star, Trash2, Wand2, Zap, Globe2, Users, Timer, Ban,
 } from 'lucide-preact';
 import { del, get, post, usePoll, type ProxyConfig, type ProxyStatus, type Server } from '../api';
 import { onRefresh, overview } from '../app';
 import { L, ago, lang, num } from '../i18n';
-import { Badge, Btn, Card, CardHead, Empty, PageHead, Setting, Skeleton, Tabs, Toggle, confirmDialog, latClass, run, toast } from '../ui';
+import { Badge, Btn, Card, CardHead, Empty, Field, PageHead, Password, Seg, Setting, Skeleton, Tabs, Toggle, confirmDialog, latClass, run, toast } from '../ui';
 import { modeInfo } from './Home';
 
 type Tab = 'servers' | 'protection' | 'log';
@@ -24,6 +24,7 @@ function transportLabel(s: Server) {
 }
 
 function Latency({ s, testing }: { s: Server; testing: boolean }) {
+  if (s.protocol === 'openvpn' && !s.testedAt) return <span class="lat faint" title={L('فقط وقتی فعال است سنجیده می‌شود', 'Measured only while active')}>—</span>;
   if (testing) return <span class="lat faint"><span class="spinner" style="width:14px;height:14px" /></span>;
   if (!s.testedAt) return <span class="lat faint">—</span>;
   if (s.latencyMs < 0) return <span class={'lat bad'} title={s.testError}>{L('خطا', 'fail')}</span>;
@@ -74,10 +75,33 @@ function StatusCard({ d, reload }: { d: ProxyResp; reload: () => void }) {
   );
 }
 
+function readFile(accept: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = accept;
+    inp.onchange = () => {
+      const f = inp.files?.[0];
+      if (!f) return reject(new Error('no file'));
+      if (f.size > 512 * 1024) return reject(new Error(L('فایل خیلی بزرگ است', 'File too large')));
+      f.text().then(resolve, reject);
+    };
+    inp.click();
+  });
+}
+
+type AddKind = 'links' | 'wg' | 'ovpn';
+
 function AddCard({ onAdded }: { onAdded: () => void }) {
+  const [kind, setKind] = useState<AddKind>('links');
   const [text, setText] = useState('');
+  const [ovpn, setOvpn] = useState({ name: '', config: '', username: '', password: '' });
   const [busy, setBusy] = useState(false);
-  const add = async () => {
+  const done = () => {
+    onAdded();
+    setTimeout(onAdded, 3000);
+  };
+  const addLinks = async () => {
     setBusy(true);
     try {
       const r = await post<{ added?: number; bad?: string[]; subscriptions?: number }>('/proxy/servers', { text });
@@ -87,33 +111,81 @@ function AddCard({ onAdded }: { onAdded: () => void }) {
         toast(L(`${num(r.added || 0)} سرور اضافه شد`, `${r.added} server(s) added`) + (r.bad?.length ? L(` · ${num(r.bad.length)} لینک نامعتبر`, ` · ${r.bad.length} invalid`) : ''));
       }
       setText('');
-      onAdded();
-      setTimeout(onAdded, 3000);
+      done();
     } catch (e: any) {
       toast(e.message, true);
     } finally {
       setBusy(false);
     }
   };
+  const addOvpn = async () => {
+    setBusy(true);
+    const ok = await run(() => post('/proxy/openvpn', ovpn), L('پروفایل OpenVPN اضافه شد', 'OpenVPN profile added'));
+    setBusy(false);
+    if (ok) {
+      setOvpn({ name: '', config: '', username: '', password: '' });
+      done();
+    }
+  };
+  const loadFile = async (accept: string, set: (t: string) => void) => {
+    try {
+      set(await readFile(accept));
+    } catch (e: any) {
+      if (e.message !== 'no file') toast(e.message, true);
+    }
+  };
   return (
     <Card>
-      <CardHead icon={<Plus size={20} />} title={L('افزودن سرور یا اشتراک', 'Add servers or a subscription')}
-        sub={L('لینک‌های vless، vmess، trojan و ss یا آدرس اشتراک را بچسبانید؛ چند خط با هم هم می‌شود', 'Paste vless/vmess/trojan/ss links or a subscription URL; multiple lines are fine')} />
-      <div class="card-body stack" style="gap:12px">
-        <textarea class="textarea" rows={4} placeholder="vless://…  /  https://panel.example.com/sub/…" value={text}
-          onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} spellcheck={false} />
-        <div class="row">
-          <Btn kind="primary" busy={busy} disabled={!text.trim()} onClick={add}><Plus size={18} />{L('افزودن', 'Add')}</Btn>
-          <Btn onClick={async () => {
-            try {
-              const t = await navigator.clipboard.readText();
-              setText(t);
-            } catch {
-              toast(L('دسترسی به کلیپ‌بورد ممکن نیست؛ دستی بچسبانید', 'Clipboard not available; paste manually'), true);
-            }
-          }}><Link2 size={17} />{L('چسباندن', 'Paste')}</Btn>
+      <CardHead icon={<Plus size={20} />} title={L('افزودن سرور', 'Add a server')}
+        sub={L('همهٔ نوع‌ها در یک فهرست قرار می‌گیرند و نگهبان بینشان جابه‌جا می‌شود', 'All types share one list, and the watchdog fails over between them')}
+        action={<Seg value={kind} onChange={setKind} items={[
+          { id: 'links', label: L('لینک / اشتراک', 'Links') },
+          { id: 'wg', label: 'WireGuard' },
+          { id: 'ovpn', label: 'OpenVPN' },
+        ]} />} />
+      {kind === 'links' && (
+        <div class="card-body stack" style="gap:12px">
+          <div class="small muted">{L('لینک‌های vless، vmess، trojan، ss و wireguard یا آدرس اشتراک را بچسبانید؛ چند خط با هم هم می‌شود', 'Paste vless/vmess/trojan/ss/wireguard links or a subscription URL; multiple lines are fine')}</div>
+          <textarea class="textarea" rows={4} placeholder="vless://…  /  https://panel.example.com/sub/…" value={text}
+            onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} spellcheck={false} />
+          <div class="row">
+            <Btn kind="primary" busy={busy} disabled={!text.trim()} onClick={addLinks}><Plus size={18} />{L('افزودن', 'Add')}</Btn>
+            <Btn onClick={async () => {
+              try {
+                setText(await navigator.clipboard.readText());
+              } catch {
+                toast(L('دسترسی به کلیپ‌بورد ممکن نیست؛ دستی بچسبانید', 'Clipboard not available; paste manually'), true);
+              }
+            }}><Link2 size={17} />{L('چسباندن', 'Paste')}</Btn>
+          </div>
         </div>
-      </div>
+      )}
+      {kind === 'wg' && (
+        <div class="card-body stack" style="gap:12px">
+          <div class="small muted">{L('محتوای فایل .conf وایرگارد (یا WARP) را بچسبانید یا فایل را انتخاب کنید. وایرگارد داخل همان موتور اجرا می‌شود، پس تفکیک ایران و قطع اضطراری برایش هم کار می‌کند.', 'Paste a WireGuard (or WARP) .conf or pick the file. It runs inside the same engine, so Iran split and the kill switch apply too.')}</div>
+          <textarea class="textarea" rows={7} placeholder={'[Interface]\nPrivateKey = …\nAddress = …\n\n[Peer]\nPublicKey = …\nEndpoint = host:51820'} value={text}
+            onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} spellcheck={false} />
+          <div class="row">
+            <Btn kind="primary" busy={busy} disabled={!text.includes('[Interface]')} onClick={addLinks}><Plus size={18} />{L('افزودن', 'Add')}</Btn>
+            <Btn onClick={() => loadFile('.conf,text/plain', setText)}><FileUp size={17} />{L('انتخاب فایل', 'Choose file')}</Btn>
+          </div>
+        </div>
+      )}
+      {kind === 'ovpn' && (
+        <div class="card-body stack" style="gap:12px">
+          <div class="small muted">{L('فایل .ovpn را انتخاب کنید. تونل OpenVPN بدون دست زدن به مسیرهای روتر بالا می‌آید و ترافیک از همان مسیر هوشمند (تفکیک ایران، DNS امن، قطع اضطراری) به آن فرستاده می‌شود.', 'Pick an .ovpn file. The tunnel comes up without touching the router’s routes, and traffic is sent into it through the same smart path (Iran split, secure DNS, kill switch).')}</div>
+          <div class="row wrap">
+            <Btn onClick={() => loadFile('.ovpn,.conf', (t) => setOvpn({ ...ovpn, config: t }))}><FileUp size={17} />{ovpn.config ? L('فایل انتخاب شد ✓', 'File loaded ✓') : L('انتخاب فایل .ovpn', 'Choose .ovpn file')}</Btn>
+          </div>
+          <div class="grid g3" style="gap:12px">
+            <Field label={L('نام (اختیاری)', 'Name (optional)')}><input class="input" value={ovpn.name} onInput={(e) => setOvpn({ ...ovpn, name: (e.target as HTMLInputElement).value })} /></Field>
+            <Field label={L('نام کاربری', 'Username')}><input class="input ltr" value={ovpn.username} autoComplete="off" onInput={(e) => setOvpn({ ...ovpn, username: (e.target as HTMLInputElement).value })} /></Field>
+            <Field label={L('رمز', 'Password')}><Password value={ovpn.password} onInput={(v) => setOvpn({ ...ovpn, password: v })} /></Field>
+          </div>
+          <div class="row"><Btn kind="primary" busy={busy} disabled={!ovpn.config} onClick={addOvpn}><Plus size={18} />{L('افزودن', 'Add')}</Btn></div>
+          <div class="tiny faint">{L('سرورهای OpenVPN فقط وقتی فعال هستند سنجیده می‌شوند و در جابه‌جایی خودکار شرکت نمی‌کنند.', 'OpenVPN servers are measured only while active and are not used for automatic failover.')}</div>
+        </div>
+      )}
     </Card>
   );
 }

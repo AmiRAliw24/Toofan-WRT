@@ -63,6 +63,24 @@ if [ -n "$MISSING" ]; then
 	# shellcheck disable=SC2086
 	pm_install $MISSING || die "could not install:$MISSING"
 fi
+# Optional features: OpenVPN, UPnP and SQM. Failures here are not fatal.
+OPTIONAL="openvpn-mbedtls miniupnpd-nftables tc-tiny kmod-sched-cake kmod-ifb"
+OPT_MISSING=""
+for p in $OPTIONAL; do pm_has "$p" || OPT_MISSING="$OPT_MISSING $p"; done
+if [ -n "$OPT_MISSING" ]; then
+	if [ "$PM" = opkg ] && [ -d "pkgs/$DISTRIB_RELEASE/optional" ]; then
+		say "installing optional packages (OpenVPN, UPnP, SQM)"
+		# shellcheck disable=SC2046
+		opkg install $(ls pkgs/$DISTRIB_RELEASE/optional/*.ipk) >/dev/null 2>&1 || true
+	else
+		say "installing optional packages:$OPT_MISSING"
+		# shellcheck disable=SC2086
+		pm_install $OPT_MISSING >/dev/null 2>&1 || say "some optional packages could not be installed (features stay off)"
+	fi
+fi
+# miniupnpd stays off until switched on from the panel.
+[ -x /etc/init.d/miniupnpd ] && [ "$(uci -q get upnpd.config.enabled)" != "1" ] && /etc/init.d/miniupnpd disable 2>/dev/null || true
+
 command -v xray >/dev/null || die "xray binary not found after install"
 say "xray: $(xray version 2>/dev/null | head -1)"
 

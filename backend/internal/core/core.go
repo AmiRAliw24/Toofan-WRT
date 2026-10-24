@@ -4,6 +4,7 @@ package core
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,20 +14,29 @@ import (
 	"separ/internal/dnsctl"
 	"separ/internal/env"
 	"separ/internal/fw"
+	"separ/internal/gaming"
 	"separ/internal/geo"
+	"separ/internal/led"
 	"separ/internal/proxy"
 	"separ/internal/system"
 	"separ/internal/wifi"
 )
 
 type Core struct {
-	Store   *config.Store
-	Sampler *system.Sampler
-	Devices *devices.Tracker
-	Proxy   *proxy.Manager
-	Quality *Quality
+	Store     *config.Store
+	Sampler   *system.Sampler
+	Devices   *devices.Tracker
+	Proxy     *proxy.Manager
+	Quality   *Quality
+	Speed     SpeedTest
+	Bloat     gaming.Bloat
+	LED       *led.Controller
+	Incidents *Incidents
+	// PanelPort is the port the UI listens on (for the WAN lock).
+	PanelPort int
 
 	applyMu   sync.Mutex
+	sqmKey    string
 	pending   chan struct{}
 	iranCIDRs []string
 	lastErr   string
@@ -47,6 +57,10 @@ func New(store *config.Store, xrayBin string) *Core {
 	}
 	c.Proxy.Init()
 	c.Quality = NewQuality(c)
+	c.Incidents = NewIncidents("/etc/separ/incidents.json")
+	c.LED = led.New()
+	c.LED.Config = func() config.LED { return c.Store.Get().LED }
+	c.LED.Status = c.ledStatus
 	c.Devices.OnIPsChanged = c.RequestApply
 	lastFP := proxyFingerprint(store.Get())
 	var fpMu sync.Mutex
@@ -73,10 +87,69 @@ func (c *Core) Start() {
 	go c.Proxy.Run()
 	go c.Quality.Run()
 	go c.guardLoop()
+	go c.LED.Run()
+	go c.nightly()
+}
+
+func (c *Core) ledStatus() led.Status {
+	w := c.Sampler.WAN()
+	sp := c.Speed.Get()
+	grade := "bad"
+	switch {
+	case sp.DownMbps >= 20:
+		grade = "ok"
+	case sp.DownMbps >= 5:
+		grade = "mid"
+	}
+	q := c.Quality.Last()
+	return led.Status{
+		WANUp: w.Up, ProxyMode: c.Proxy.Mode(), Split: c.Store.Get().Proxy.SplitIran,
+		ExtPingMs: q.Ext, SpeedTest: sp.Running, SpeedGrade: grade,
+	}
+}
+
+// nightly runs the 04:00 maintenance: smart Wi-Fi channel selection.
+func (c *Core) nightly() {
+	last := ""
+	for {
+		time.Sleep(time.Minute)
+		now := time.Now()
+		day := now.Format("2006-01-02")
+		if now.Hour() != 4 || last == day {
+			continue
+		}
+		last = day
+		if c.Store.Get().SmartWiFi {
+			for _, band := range []string{"2g", "5g"} {
+				if _, err := wifi.Optimize(band, true); err != nil {
+					env.Logf("smart wifi %s: %v", band, err)
+				}
+			}
+		}
+	}
+}
+
+// applySQM (re)installs the shaper when settings or the WAN device change.
+func (c *Core) applySQM(cfg *config.Config) {
+	wan := c.Sampler.WAN().Device
+	down, up := 0, 0
+	if cfg.SQM.Enabled {
+		down, up = cfg.SQM.DownMbps*1000, cfg.SQM.UpMbps*1000
+	}
+	key := strings.Join([]string{wan, strconv.Itoa(down), strconv.Itoa(up)}, "/")
+	if key == c.sqmKey || wan == "" {
+		return
+	}
+	c.sqmKey = key
+	if err := gaming.ApplySQM(wan, down, up); err != nil {
+		env.Logf("sqm: %v", err)
+		c.sqmKey = ""
+	}
 }
 
 func (c *Core) Shutdown() {
 	c.Proxy.Stop()
+	gaming.RemoveSQM(c.Sampler.WAN().Device)
 	fw.Remove()
 	dnsctl.Remove()
 }
@@ -109,6 +182,14 @@ func (c *Core) ispDNS() []string {
 		return st.DNS
 	}
 	return nil
+}
+
+// Reapply forces a full refresh, including the shaper (after WAN restarts).
+func (c *Core) Reapply() {
+	c.applyMu.Lock()
+	c.sqmKey = ""
+	c.applyMu.Unlock()
+	c.RequestApply()
 }
 
 // RequestApply schedules a (debounced) firewall + DNS refresh.
@@ -179,6 +260,9 @@ func (c *Core) apply() {
 		TProxy:     c.Proxy.Capturing(),
 		TProxyPort: proxy.TProxyPort,
 		BlockIPv6:  cfg.Proxy.Enabled && cfg.Proxy.BlockIPv6,
+		LockWAN:    cfg.LockWAN,
+		WANDev:     c.Sampler.WAN().Device,
+		PanelPorts: []int{c.PanelPort},
 	}
 	if cfg.Proxy.SplitIran {
 		plan.IranCIDRs = c.iranCIDRs
@@ -221,6 +305,7 @@ func (c *Core) apply() {
 	if err := dnsctl.Apply(dp); err != nil {
 		env.Logf("dns: %v", err)
 	}
+	c.applySQM(cfg)
 }
 
 func (c *Core) LastError() string { return c.lastErr }
