@@ -95,12 +95,23 @@ cp files/lib/upgrade/keep.d/separ /lib/upgrade/keep.d/separ
 cp files/etc/hotplug.d/iface/99-separ /etc/hotplug.d/iface/99-separ
 cp uninstall.sh /usr/share/separ-uninstall.sh 2>/dev/null || true
 
-[ -f /etc/config/separ ] || {
-	touch /etc/config/separ
-	uci set separ.main=separ
-	uci set separ.main.listen=':8080'
-	uci commit separ
-}
+[ -f /etc/config/separ ] || touch /etc/config/separ
+uci -q get separ.main >/dev/null || uci set separ.main=separ
+# Separ is the router's single web interface on port 80 (8080 stays as an alias
+# for old bookmarks). LuCI stays installed but off; the panel can start it
+# temporarily on port 8081 (System -> Advanced settings).
+uci set separ.main.listen=':80,:8080'
+uci commit separ
+if [ -x /etc/init.d/uhttpd ]; then
+	say "making Separ the main interface (LuCI moved out of the way)"
+	uci -q delete uhttpd.main.listen_http
+	uci add_list uhttpd.main.listen_http='0.0.0.0:8081'
+	uci -q delete uhttpd.main.listen_https
+	uci set uhttpd.main.redirect_https='0'
+	uci commit uhttpd
+	/etc/init.d/uhttpd stop 2>/dev/null || true
+	/etc/init.d/uhttpd disable 2>/dev/null || true
+fi
 
 # Software flow offloading skips nftables for established connections,
 # which would hide per-device speeds and break per-device limits.
@@ -118,9 +129,13 @@ fi
 /etc/init.d/separ start
 
 LANIP="$(uci -q get network.lan.ipaddr | cut -d/ -f1)"
-PORT="$(uci -q get separ.main.listen | sed 's/.*://')"
+PORT="$(uci -q get separ.main.listen | cut -d, -f1 | sed 's/.*://')"
 say "done!"
 echo
-echo "  پنل:  http://${LANIP:-192.168.1.1}:${PORT:-8080}"
+if [ "${PORT:-80}" = 80 ]; then
+	echo "  پنل:  http://${LANIP:-192.168.1.1}"
+else
+	echo "  پنل:  http://${LANIP:-192.168.1.1}:$PORT"
+fi
 echo "  رمز:  همان رمز root روتر (LuCI/SSH)"
 echo

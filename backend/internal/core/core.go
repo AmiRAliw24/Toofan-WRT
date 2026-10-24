@@ -18,6 +18,7 @@ import (
 	"separ/internal/gaming"
 	"separ/internal/geo"
 	"separ/internal/led"
+	"separ/internal/luci"
 	"separ/internal/proxy"
 	"separ/internal/system"
 	"separ/internal/wifi"
@@ -33,8 +34,8 @@ type Core struct {
 	Bloat     gaming.Bloat
 	LED       *led.Controller
 	Incidents *Incidents
-	// PanelPort is the port the UI listens on (for the WAN lock).
-	PanelPort int
+	// PanelPorts are the ports the UI listens on (for the WAN lock).
+	PanelPorts []int
 
 	applyMu   sync.Mutex
 	sqmKey    string
@@ -271,7 +272,7 @@ func (c *Core) apply() {
 		BlockIPv6:  cfg.Proxy.Enabled && cfg.Proxy.BlockIPv6,
 		LockWAN:    cfg.LockWAN,
 		WANDev:     c.Sampler.WAN().Device,
-		PanelPorts: []int{c.PanelPort},
+		PanelPorts: append(append([]int{}, c.PanelPorts...), luci.AltPort),
 	}
 	if cfg.Proxy.SplitIran {
 		plan.IranCIDRs = c.iranCIDRs

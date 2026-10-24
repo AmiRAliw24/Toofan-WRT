@@ -10,7 +10,7 @@ PROG=/usr/bin/separ
 start_service() {
 	local listen
 	listen="$(uci -q get separ.main.listen)"
-	[ -n "$listen" ] || listen=":8080"
+	[ -n "$listen" ] || listen=":80,:8080"
 
 	procd_open_instance
 	procd_set_param command "$PROG" -listen "$listen" -config /etc/separ/config.json -xray /usr/bin/xray

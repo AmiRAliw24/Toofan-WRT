@@ -12,6 +12,8 @@ import (
 
 	"separ/internal/config"
 	"separ/internal/env"
+	"separ/internal/luci"
+	"separ/internal/netcfg"
 	"separ/internal/proxy"
 	"separ/internal/update"
 )
@@ -25,11 +27,21 @@ func (s *Server) phase3Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/system/restore", s.restore)
 	api.HandleFunc("GET /api/system/export", s.exportSettings)
 	api.HandleFunc("POST /api/system/import", s.importSettings)
+	api.HandleFunc("GET /api/luci", s.luciGet)
+	api.HandleFunc("POST /api/luci", s.luciSet)
+	api.HandleFunc("GET /api/network", s.netGet)
+	api.HandleFunc("POST /api/network/wan", s.netWAN)
+	api.HandleFunc("POST /api/network/lan", s.netLAN)
+	api.HandleFunc("POST /api/network/system", s.netSystem)
 }
 
 func (s *Server) updater() *update.Updater {
 	s.updOnce.Do(func() {
-		s.upd = &update.Updater{Version: s.Version, Port: s.core.PanelPort, SocksPort: proxy.SocksPort, Simulate: env.Mock}
+		port := 80
+		if len(s.core.PanelPorts) > 0 {
+			port = s.core.PanelPorts[0]
+		}
+		s.upd = &update.Updater{Version: s.Version, Port: port, SocksPort: proxy.SocksPort, Simulate: env.Mock}
 	})
 	return s.upd
 }
@@ -175,4 +187,56 @@ func (s *Server) importSettings(w http.ResponseWriter, r *http.Request) {
 		*c = *in
 		return nil
 	}))
+}
+
+func (s *Server) luciGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, luci.Get())
+}
+
+func (s *Server) luciSet(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Enabled bool `json:"enabled"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := luci.Set(in.Enabled); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, luci.Get())
+}
+
+func (s *Server) netGet(w http.ResponseWriter, r *http.Request) {
+	st, err := netcfg.Get()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	st.WAN.Password = ""
+	writeJSON(w, st)
+}
+
+func (s *Server) netWAN(w http.ResponseWriter, r *http.Request) {
+	var in netcfg.WAN
+	if !decode(w, r, &in) {
+		return
+	}
+	respond(w, netcfg.SetWAN(in))
+}
+
+func (s *Server) netLAN(w http.ResponseWriter, r *http.Request) {
+	var in netcfg.LAN
+	if !decode(w, r, &in) {
+		return
+	}
+	respond(w, netcfg.SetLAN(in))
+}
+
+func (s *Server) netSystem(w http.ResponseWriter, r *http.Request) {
+	var in netcfg.System
+	if !decode(w, r, &in) {
+		return
+	}
+	respond(w, netcfg.SetSystem(in))
 }

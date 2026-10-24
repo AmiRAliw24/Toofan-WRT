@@ -3,7 +3,8 @@ import { Cpu, HardDrive, KeyRound, MemoryStick, Power, Router, Thermometer } fro
 import { post, usePoll, type SystemStats, type WAN } from '../api';
 import { L, bytes, duration, lang, num, pct } from '../i18n';
 import { LedCard } from './Led';
-import { BackupCard, UpdateCard } from './Maintenance';
+import { BackupCard, LuciCard, UpdateCard } from './Maintenance';
+import { LanCard, SystemSettingsCard } from './Network';
 import { Btn, Card, CardHead, Field, Meter, PageHead, Password, Skeleton, confirmDialog, run, toast } from '../ui';
 
 interface SysResp { system: SystemStats; wan: WAN; version: string }
@@ -85,10 +86,15 @@ export function System() {
         </Card>
       </div>
       <div class="grid g2">
+        <LanCard />
+        <SystemSettingsCard />
+      </div>
+      <div class="grid g2">
         <UpdateCard />
         <BackupCard />
       </div>
       <LedCard />
+      <LuciCard />
     </div>
   );
 }
