@@ -1,9 +1,12 @@
 package proxy
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 
 	"separ/internal/config"
@@ -13,6 +16,7 @@ const (
 	TProxyPort = 12345
 	SocksPort  = 10808
 	DNSPort    = 5353
+	APIAddr    = "127.0.0.1:10085" // Xray's handler API, used to swap servers live
 	// Mark set on Xray's own sockets so they never get re-captured.
 	OutMark = 255
 )
@@ -29,6 +33,9 @@ type BuildOpts struct {
 	// KernelIran: Iranian IP ranges are already excluded in nftables, so Xray
 	// doesn't need to load the 20+ MB geoip.dat (slow on router CPUs).
 	KernelIran bool
+	// AllHosts are the hostnames of every configured server; they are always
+	// resolved outside the tunnel, so switching servers never changes DNS.
+	AllHosts []string
 }
 
 var privateCIDRs = []string{
@@ -36,9 +43,10 @@ var privateCIDRs = []string{
 	"172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4", "fc00::/7", "fe80::/10",
 }
 
-// BuildConfig renders the full Xray config for the transparent proxy.
-func BuildConfig(o BuildOpts) ([]byte, error) {
-	ob, _, err := Outbound(o.Server.Link)
+// ProxyOutbound builds the "proxy" outbound for a server, adapted to the
+// running Xray version.
+func ProxyOutbound(srv config.Server) (*XOutbound, error) {
+	ob, _, err := Outbound(srv.Link)
 	if err != nil {
 		return nil, err
 	}
@@ -46,14 +54,40 @@ func BuildConfig(o BuildOpts) ([]byte, error) {
 	if ob.StreamSettings == nil {
 		ob.StreamSettings = &StreamSettings{}
 	}
-	ob.StreamSettings.Sockopt = map[string]any{"mark": OutMark, "domainStrategy": "UseIPv4"}
+	if ob.StreamSettings.Sockopt == nil {
+		ob.StreamSettings.Sockopt = map[string]any{}
+	}
+	ob.StreamSettings.Sockopt["mark"] = OutMark
+	if _, bound := ob.StreamSettings.Sockopt["interface"]; !bound {
+		ob.StreamSettings.Sockopt["domainStrategy"] = "UseIPv4"
+	}
+	if err := adaptOutbound(ob); err != nil {
+		return nil, err
+	}
+	return ob, nil
+}
+
+// BuildConfig renders the full Xray config for the transparent proxy. It
+// also returns a fingerprint of everything except the proxy outbound: when
+// only that differs, the running Xray can swap servers live.
+func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
+	ob, err := ProxyOutbound(o.Server)
+	if err != nil {
+		return nil, "", err
+	}
 
 	isp := ispResolvers(o.ISPDNS)
 	direct := []string{}
-	if net.ParseIP(o.Server.Address) == nil {
-		// The proxy's own hostname must be resolved outside the tunnel.
-		direct = append(direct, "full:"+o.Server.Address)
+	hosts := append([]string{o.Server.Address}, o.AllHosts...)
+	seen := map[string]bool{}
+	for _, h := range hosts {
+		// Proxy hostnames must be resolved outside the tunnel.
+		if h != "" && net.ParseIP(h) == nil && !seen[h] {
+			seen[h] = true
+			direct = append(direct, "full:"+h)
+		}
 	}
+	sort.Strings(direct)
 	if o.SplitIran {
 		direct = append(direct, "domain:ir")
 		if o.HaveIran {
@@ -109,6 +143,7 @@ func BuildConfig(o BuildOpts) ([]byte, error) {
 	sockDirect := map[string]any{"mark": OutMark}
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
+		"api": map[string]any{"tag": "api", "listen": APIAddr, "services": []string{"HandlerService"}},
 		"dns": map[string]any{
 			"tag":           "dns-internal",
 			"queryStrategy": "UseIPv4",
@@ -144,29 +179,33 @@ func BuildConfig(o BuildOpts) ([]byte, error) {
 		},
 		"routing": map[string]any{"domainStrategy": "AsIs", "rules": rules},
 	}
-	return json.MarshalIndent(cfg, "", "  ")
+	outs := cfg["outbounds"].([]any)
+	cfg["outbounds"] = outs[1:]
+	base, _ := json.Marshal(cfg)
+	sum := sha1.Sum(base)
+	cfg["outbounds"] = outs
+	full, err := json.MarshalIndent(cfg, "", "  ")
+	return full, hex.EncodeToString(sum[:]), err
 }
 
 // BuildTestConfig makes one Xray instance that exposes a local SOCKS port
 // per server, so all servers can be measured in parallel.
-func BuildTestConfig(servers []config.Server, basePort int, isp []string) ([]byte, []int, error) {
+func BuildTestConfig(servers []config.Server, basePort int, isp []string) ([]byte, []int, []string, error) {
+	errs := make([]string, len(servers))
 	inbounds := []any{}
 	outbounds := []any{map[string]any{"tag": "direct", "protocol": "freedom"}}
 	rules := []any{}
 	ports := make([]int, len(servers))
 	var hostnames []string
 	for i, s := range servers {
-		ob, _, err := Outbound(s.Link)
+		ob, err := ProxyOutbound(s)
 		if err != nil {
 			ports[i] = -1
+			errs[i] = err.Error()
 			continue
 		}
 		in, out := fmt.Sprintf("in%d", i), fmt.Sprintf("out%d", i)
 		ob.Tag = out
-		if ob.StreamSettings == nil {
-			ob.StreamSettings = &StreamSettings{}
-		}
-		ob.StreamSettings.Sockopt = map[string]any{"mark": OutMark, "domainStrategy": "UseIPv4"}
 		ports[i] = basePort + i
 		inbounds = append(inbounds, map[string]any{
 			"tag": in, "listen": "127.0.0.1", "port": ports[i], "protocol": "socks",
@@ -192,7 +231,7 @@ func BuildTestConfig(servers []config.Server, basePort int, isp []string) ([]byt
 		"routing":   map[string]any{"rules": rules},
 	}
 	b, err := json.Marshal(cfg)
-	return b, ports, err
+	return b, ports, errs, err
 }
 
 func ispResolvers(in []string) []string {

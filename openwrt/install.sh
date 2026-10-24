@@ -82,7 +82,22 @@ fi
 [ -x /etc/init.d/miniupnpd ] && [ "$(uci -q get upnpd.config.enabled)" != "1" ] && /etc/init.d/miniupnpd disable 2>/dev/null || true
 
 command -v xray >/dev/null || die "xray binary not found after install"
-say "xray: $(xray version 2>/dev/null | head -1)"
+# Prefer the bundled, newer Xray when it runs on this router; the package's
+# /usr/bin/xray stays as the fallback.
+XRAY=/usr/bin/xray
+case "$ARCH" in armv7l) XBIN=bin/xray-armv7 ;; *) XBIN="" ;; esac
+if [ -n "$XBIN" ] && [ -f "$XBIN" ]; then
+	mkdir -p /usr/libexec/separ
+	cp "$XBIN" /usr/libexec/separ/xray.new && chmod 755 /usr/libexec/separ/xray.new
+	if /usr/libexec/separ/xray.new version >/dev/null 2>&1; then
+		mv -f /usr/libexec/separ/xray.new /usr/libexec/separ/xray
+		XRAY=/usr/libexec/separ/xray
+	else
+		rm -f /usr/libexec/separ/xray.new
+		say "bundled Xray does not run here; using the system package"
+	fi
+fi
+say "xray: $($XRAY version 2>/dev/null | head -1)"
 
 say "installing panel"
 # From here on the panel is down; whatever happens next, bring it back up.
@@ -109,6 +124,7 @@ uci -q get separ.main >/dev/null || uci set separ.main=separ
 # for old bookmarks). LuCI stays installed but off; the panel can start it
 # temporarily on port 8081 (System -> Advanced settings).
 uci set separ.main.listen=':80,:8080'
+uci set separ.main.xray="$XRAY"
 uci commit separ
 if [ -x /etc/init.d/uhttpd ]; then
 	say "making Separ the main interface (LuCI moved out of the way)"

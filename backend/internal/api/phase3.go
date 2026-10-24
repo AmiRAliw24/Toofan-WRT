@@ -43,6 +43,7 @@ func (s *Server) phase3Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/wifi/networks", s.wifiNetworkSave)
 	api.HandleFunc("DELETE /api/wifi/networks/{section}", s.wifiNetworkDelete)
 	api.HandleFunc("POST /api/wifi/route", s.wifiRoute)
+	api.HandleFunc("POST /api/wifi/radio", s.wifiRadio)
 }
 
 func (s *Server) updater() *update.Updater {
@@ -304,7 +305,8 @@ func (s *Server) wifiNetworks(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, netView{SSID: n, Route: route})
 	}
-	writeJSON(w, map[string]any{"networks": out, "routingSupported": fw.BridgeSupported()})
+	st, _ := wifi.Get()
+	writeJSON(w, map[string]any{"networks": out, "routingSupported": fw.BridgeSupported(), "bands": st.Bands})
 }
 
 func (s *Server) setRoutes(sections []string, route string) error {
@@ -369,4 +371,16 @@ func (s *Server) wifiRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, s.setRoutes([]string{in.Section}, in.Route))
+}
+
+func (s *Server) wifiRadio(w http.ResponseWriter, r *http.Request) {
+	var in wifi.RadioSettings
+	if !decode(w, r, &in) {
+		return
+	}
+	err := wifi.SetRadio(in)
+	if err == nil {
+		s.core.Reapply()
+	}
+	respond(w, err)
 }

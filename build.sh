@@ -30,6 +30,17 @@ bundle() { # list-file dest-subdir
 		cp "$f" "$OUT/pkgs/$rel/$2"
 	done
 }
+# Newest Xray that still allows VLESS without TLS (26.10+ forbids it), taken
+# from OpenWrt 25.12's package feed and unpacked from its apk-v3 container.
+XRAY_APK_URL="https://downloads.openwrt.org/releases/25.12.6/packages/arm_cortex-a7_neon-vfpv4/packages/xray-core-26.3.27-r1.apk"
+mkdir -p openwrt/pkgs/xray
+[ -f openwrt/pkgs/xray/xray-armv7 ] || {
+	curl -fsSL -o openwrt/pkgs/xray/arm.apk "$XRAY_APK_URL"
+	python3 tools/apk-extract-elf.py openwrt/pkgs/xray/arm.apk openwrt/pkgs/xray/xray-armv7
+	rm -f openwrt/pkgs/xray/arm.apk
+}
+cp openwrt/pkgs/xray/xray-armv7 "$OUT/bin/xray-armv7"
+
 for list in openwrt/offline-*.list; do bundle "$list" .; done
 for list in openwrt/optional-*.list; do bundle "$list" optional; done
 

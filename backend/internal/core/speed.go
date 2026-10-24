@@ -52,6 +52,7 @@ type SpeedResult struct {
 type SpeedTest struct {
 	mu      sync.Mutex
 	res     SpeedResult
+	abort   chan struct{}
 	history []SpeedResult
 	loaded  bool
 
@@ -101,7 +102,9 @@ func (s *SpeedTest) loadHistory() {
 
 func (s *SpeedTest) set(f func(r *SpeedResult)) {
 	s.mu.Lock()
-	f(&s.res)
+	if s.res.Phase != "stopped" {
+		f(&s.res)
+	}
 	s.mu.Unlock()
 }
 
@@ -109,6 +112,9 @@ func (s *SpeedTest) set(f func(r *SpeedResult)) {
 func (s *SpeedTest) finish(f func(r *SpeedResult)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.res.Phase == "stopped" {
+		return
+	}
 	f(&s.res)
 	s.res.Running = false
 	s.loadHistory()
@@ -209,9 +215,31 @@ func (s *SpeedTest) Start(viaTunnel bool, srv SpeedServer) bool {
 		srv = cloudflareServer
 	}
 	s.res = SpeedResult{Running: true, Phase: "ping", Via: via, Server: srv, At: time.Now().Unix()}
+	s.abort = make(chan struct{})
+	abort := s.abort
 	s.mu.Unlock()
-	go s.run(viaTunnel, srv)
+	go s.run(viaTunnel, srv, abort)
 	return true
+}
+
+// Stop cancels a running test.
+func (s *SpeedTest) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.res.Running && s.abort != nil {
+		close(s.abort)
+		s.abort = nil
+		s.res.Running, s.res.Phase = false, "stopped"
+	}
+}
+
+func aborted(c <-chan struct{}) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
 }
 
 // endpoints of a destination: ping URL, download URL (per request) and upload URL.
@@ -253,9 +281,9 @@ func endpointsFor(srv SpeedServer) endpoints {
 	return e
 }
 
-func (s *SpeedTest) run(viaTunnel bool, srv SpeedServer) {
+func (s *SpeedTest) run(viaTunnel bool, srv SpeedServer, abort <-chan struct{}) {
 	if env.Mock {
-		s.mockRun()
+		s.mockRun(abort)
 		return
 	}
 	cl := speedClient(viaTunnel, 30*time.Second)
@@ -268,6 +296,9 @@ func (s *SpeedTest) run(viaTunnel bool, srv SpeedServer) {
 	var pings []float64
 	pingURL := ep.ping
 	for i := 0; i < 11; i++ {
+		if aborted(abort) {
+			return
+		}
 		start := time.Now()
 		resp, err := cl.Get(pingURL)
 		if err == nil && resp.StatusCode >= 400 {
@@ -303,7 +334,10 @@ func (s *SpeedTest) run(viaTunnel bool, srv SpeedServer) {
 	if ep.legacyDL != nil && !reachable(cl, ep.download()) {
 		dlURL = ep.legacyDL
 	}
-	down := measure(12*time.Second, 4, func(stop <-chan struct{}, add func(int)) {
+	if aborted(abort) {
+		return
+	}
+	down := measure(12*time.Second, 4, abort, func(stop <-chan struct{}, add func(int)) {
 		for {
 			select {
 			case <-stop:
@@ -335,7 +369,10 @@ func (s *SpeedTest) run(viaTunnel bool, srv SpeedServer) {
 	s.set(func(r *SpeedResult) { r.DownMbps = down; r.Phase = "upload" })
 
 	ulURL := ep.upload
-	up := measure(10*time.Second, 3, func(stop <-chan struct{}, add func(int)) {
+	if aborted(abort) {
+		return
+	}
+	up := measure(10*time.Second, 3, abort, func(stop <-chan struct{}, add func(int)) {
 		chunk := strings.Repeat("0", 2<<20)
 		for {
 			select {
@@ -407,7 +444,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 }
 
 // measure runs workers for d and reports Mbps, updating live every 500ms.
-func measure(d time.Duration, workers int, work func(stop <-chan struct{}, add func(int)), live func(float64)) float64 {
+func measure(d time.Duration, workers int, abort <-chan struct{}, work func(stop <-chan struct{}, add func(int)), live func(float64)) float64 {
 	var mu sync.Mutex
 	total := 0
 	add := func(n int) { mu.Lock(); total += n; mu.Unlock() }
@@ -422,7 +459,7 @@ func measure(d time.Duration, workers int, work func(stop <-chan struct{}, add f
 	var warmBytes int
 	var warmAt time.Time
 	tk := time.NewTicker(500 * time.Millisecond)
-	for time.Since(start) < d {
+	for time.Since(start) < d && !aborted(abort) {
 		<-tk.C
 		mu.Lock()
 		t := total
@@ -456,15 +493,15 @@ func mbps(bytes int, d time.Duration) float64 {
 	return float64(int(v*10+0.5)) / 10
 }
 
-func (s *SpeedTest) mockRun() {
+func (s *SpeedTest) mockRun(abort <-chan struct{}) {
 	time.Sleep(1200 * time.Millisecond)
 	s.set(func(r *SpeedResult) { r.PingMs, r.JitterMs = 140+rand.Intn(40), 4+rand.Intn(10); r.Phase = "download" })
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 16 && !aborted(abort); i++ {
 		time.Sleep(450 * time.Millisecond)
 		s.set(func(r *SpeedResult) { r.DownMbps = float64(int((28+rand.Float64()*12)*10)) / 10 })
 	}
 	s.set(func(r *SpeedResult) { r.Phase = "upload" })
-	for i := 0; i < 12; i++ {
+	for i := 0; i < 12 && !aborted(abort); i++ {
 		time.Sleep(450 * time.Millisecond)
 		s.set(func(r *SpeedResult) { r.UpMbps = float64(int((6+rand.Float64()*4)*10)) / 10 })
 	}

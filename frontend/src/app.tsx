@@ -98,7 +98,8 @@ function NavItem(p: { n: NavDef; active: boolean; onClick: () => void }) {
     if (d !== null) extra = <span class={'nav-dot' + (d ? ' ' + d : '')} />;
   }
   return (
-    <button class={'nav-item' + (p.active ? ' active' : '')} onClick={p.onClick} aria-current={p.active ? 'page' : undefined}>
+    <button class={'nav-item' + (p.active ? ' active' : '')} onClick={p.onClick} aria-current={p.active ? 'page' : undefined}
+      title={p.n.label()} aria-label={p.n.label()}>
       <span class="nav-icon">{p.n.icon}</span>
       <span class="grow">
         <div class="nav-label">{p.n.label()}</div>

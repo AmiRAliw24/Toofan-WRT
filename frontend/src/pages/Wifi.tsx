@@ -56,11 +56,70 @@ export function QRModal({ ssid, keyStr, enc, onClose }: { ssid: string; keyStr: 
   );
 }
 
+interface Live { channel: number; frequency: number; txpower: number; htmode: string; bssid: string; clients: number; up: boolean }
 interface Net {
   section: string; radio: string; band: '2g' | '5g'; ssid: string; encryption: string; key: string;
   hidden: boolean; enabled: boolean; primary: boolean; netdev?: string; route: 'tunnel' | 'direct';
+  isolate: boolean; maxClients: number; fastRoaming: boolean; mfp: string; macFilter: string; macList: string[] | null;
+  live?: Live | null;
 }
-interface NetsResp { networks: Net[]; routingSupported: boolean }
+interface NetsResp { networks: Net[]; routingSupported: boolean; bands: Band[] }
+
+const widths = (band: string) => band === '5g'
+  ? [{ id: 'VHT20', l: '20 MHz' }, { id: 'VHT40', l: '40 MHz' }, { id: 'VHT80', l: '80 MHz' }]
+  : [{ id: 'HT20', l: '20 MHz' }, { id: 'HT40', l: '40 MHz' }];
+
+function LiveInfo({ live, band }: { live?: Live | null; band: string }) {
+  if (!live) return null;
+  return (
+    <div class="live-grid">
+      <div class="live-cell"><div class="k">{L('وضعیت', 'Status')}</div><div class="v" style={{ color: live.up ? 'var(--ok)' : 'var(--text-3)' }}>{live.up ? L('فعال', 'On air') : L('خاموش', 'Off')}</div></div>
+      <div class="live-cell"><div class="k">{L('کانال فعلی', 'Channel')}</div><div class="v">{live.channel ? digits(live.channel) : '—'}<span class="tiny faint"> {live.frequency ? `(${digits(live.frequency)} MHz)` : ''}</span></div></div>
+      <div class="live-cell"><div class="k">{L('پهنا', 'Width')}</div><div class="v ltr">{live.htmode || '—'}</div></div>
+      <div class="live-cell"><div class="k">{L('توان ارسال', 'TX power')}</div><div class="v">{live.txpower ? `${digits(live.txpower)} dBm` : '—'}</div></div>
+      <div class="live-cell"><div class="k">{L('دستگاه متصل', 'Clients')}</div><div class="v">{num(live.clients)}</div></div>
+      <div class="live-cell"><div class="k">BSSID</div><div class="v mono tiny">{live.bssid || '—'}</div></div>
+    </div>
+  );
+}
+
+function RadioCard({ b, onSaved }: { b: Band; onSaved: () => void }) {
+  const [f, setF] = useState({ channel: b.channel || 'auto', htmode: b.htmode || '', txpower: b.txpower || 0 });
+  const [busy, setBusy] = useState(false);
+  return (
+    <details class="adv">
+      <summary><Radar size={16} />{L('تنظیمات رادیو', 'Radio settings')} · {b.band === '5g' ? L('۵ گیگ', '5 GHz') : L('۲٫۴ گیگ', '2.4 GHz')}
+        <span class="tiny faint" style="margin-inline-start:auto">{L('برای همهٔ شبکه‌های این باند', 'applies to every network on this band')}</span></summary>
+      <div class="stack" style="gap:12px;padding-top:12px">
+        <div class="grid g3" style="gap:12px">
+          <Field label={L('کانال', 'Channel')}>
+            <select class="select" value={f.channel} onChange={(e) => setF({ ...f, channel: (e.target as HTMLSelectElement).value })}>
+              <option value="auto">{L('خودکار', 'Automatic')}</option>
+              {(b.channels || []).map((c) => <option value={String(c)}>{digits(c)}</option>)}
+            </select>
+          </Field>
+          <Field label={L('پهنای کانال', 'Channel width')} hint={L('پهن‌تر = سریع‌تر، ولی تداخل بیشتر', 'Wider = faster, but more interference')}>
+            <select class="select" value={f.htmode} onChange={(e) => setF({ ...f, htmode: (e.target as HTMLSelectElement).value })}>
+              {widths(b.band).map((w) => <option value={w.id}>{w.l}</option>)}
+            </select>
+          </Field>
+          <Field label={L('توان ارسال', 'Transmit power')} hint={L('کمتر = برد کمتر و تداخل کمتر با همسایه‌ها', 'Lower = shorter range, less interference')}>
+            <select class="select" value={String(f.txpower)} onChange={(e) => setF({ ...f, txpower: +(e.target as HTMLSelectElement).value })}>
+              <option value="0">{L('حداکثر مجاز', 'Maximum allowed')}</option>
+              {[23, 20, 17, 14, 11, 8].map((d) => <option value={String(d)}>{digits(d)} dBm</option>)}
+            </select>
+          </Field>
+        </div>
+        <div><Btn sm kind="primary" busy={busy} onClick={async () => {
+          setBusy(true);
+          const ok = await run(() => post('/wifi/radio', { radio: b.radio, ...f }), L('ذخیره شد؛ وای‌فای این باند چند ثانیه قطع می‌شود', 'Saved; this band restarts for a few seconds'));
+          setBusy(false);
+          if (ok) onSaved();
+        }}><Save size={15} />{L('ذخیرهٔ تنظیمات رادیو', 'Save radio settings')}</Btn></div>
+      </div>
+    </details>
+  );
+}
 
 /** RouteChoice picks whether a Wi-Fi network's clients use the tunnel. */
 function RouteChoice({ value, onChange, supported }: { value: string; onChange: (v: 'tunnel' | 'direct') => void; supported: boolean }) {
@@ -241,20 +300,27 @@ function Advanced({ smart, reload, bands }: { smart: boolean; reload: () => void
   );
 }
 
-function NetModal({ n, routing, onClose, onSaved }: { n?: Net; routing: boolean; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState<any>(n ? { ...n } : { section: '', band: '5g', ssid: '', encryption: 'sae-mixed', key: '', hidden: false, enabled: true, route: 'tunnel' });
+function NetModal({ n, routing, bands, onClose, onSaved }: { n?: Net; routing: boolean; bands: Band[]; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState<any>(n ? { ...n, macList: n.macList || [] } : {
+    section: '', band: '5g', ssid: '', encryption: 'sae-mixed', key: '', hidden: false, enabled: true, route: 'tunnel',
+    isolate: false, maxClients: 0, fastRoaming: false, mfp: '1', macFilter: '', macList: [],
+  });
+  const [macText, setMacText] = useState((n?.macList || []).join('\n'));
   const [busy, setBusy] = useState(false);
   const up = (p: any) => setF({ ...f, ...p });
   const invalid = !f.ssid || (f.encryption !== 'none' && f.key.length < 8);
+  const band = bands.find((b) => b.band === (n ? n.band : f.band));
   return (
-    <Modal title={n ? L('ویرایش شبکه', 'Edit network') : L('شبکهٔ وای‌فای جدید', 'New Wi-Fi network')} onClose={onClose}
+    <Modal wide title={n ? <bdi>{n.ssid}</bdi> : L('شبکهٔ وای‌فای جدید', 'New Wi-Fi network')} onClose={onClose}
       foot={<><Btn onClick={onClose}>{L('انصراف', 'Cancel')}</Btn>
         <Btn kind="primary" busy={busy} disabled={invalid} onClick={async () => {
           setBusy(true);
-          const ok = await run(() => post('/wifi/networks', f), L('ذخیره شد؛ وای‌فای چند ثانیه قطع و وصل می‌شود', 'Saved; Wi-Fi restarts for a few seconds'));
+          const macList = macText.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+          const ok = await run(() => post('/wifi/networks', { ...f, macList }), L('ذخیره شد؛ وای‌فای چند ثانیه قطع و وصل می‌شود', 'Saved; Wi-Fi restarts for a few seconds'));
           setBusy(false);
           if (ok) { onSaved(); onClose(); }
         }}>{L('ذخیره', 'Save')}</Btn></>}>
+      {n && <LiveInfo live={n.live} band={n.band} />}
       {!n && (
         <Field label={L('باند', 'Band')}>
           <Seg value={f.band} onChange={(v: string) => up({ band: v })} items={[
@@ -264,14 +330,16 @@ function NetModal({ n, routing, onClose, onSaved }: { n?: Net; routing: boolean;
           ]} />
         </Field>
       )}
-      <Field label={L('نام شبکه (SSID)', 'Network name (SSID)')}>
-        <input class="input" value={f.ssid} maxLength={32} onInput={(e) => up({ ssid: (e.target as HTMLInputElement).value })} />
-      </Field>
-      <Field label={L('نوع رمزنگاری', 'Security')}>
-        <select class="select" value={f.encryption} onChange={(e) => up({ encryption: (e.target as HTMLSelectElement).value })}>
-          {encOptions().map((o) => <option value={o.id}>{o.label}</option>)}
-        </select>
-      </Field>
+      <div class="grid g2" style="gap:12px">
+        <Field label={L('نام شبکه (SSID)', 'Network name (SSID)')}>
+          <input id="net-ssid" class="input" value={f.ssid} maxLength={32} onInput={(e) => up({ ssid: (e.target as HTMLInputElement).value })} />
+        </Field>
+        <Field label={L('نوع رمزنگاری', 'Security')}>
+          <select id="net-enc" class="select" value={f.encryption} onChange={(e) => up({ encryption: (e.target as HTMLSelectElement).value })}>
+            {encOptions().map((o) => <option value={o.id}>{o.label}</option>)}
+          </select>
+        </Field>
+      </div>
       {f.encryption !== 'none' && (
         <Field label={L('رمز عبور', 'Password')} hint={L('حداقل ۸ کاراکتر', 'At least 8 characters')}>
           <Password value={f.key} onInput={(v) => up({ key: v })} />
@@ -279,9 +347,47 @@ function NetModal({ n, routing, onClose, onSaved }: { n?: Net; routing: boolean;
       )}
       <div>
         <RouteChoice value={f.route} supported={routing} onChange={(v) => up({ route: v })} />
-        <Setting title={L('مخفی کردن نام شبکه', 'Hide network name')}><Toggle on={f.hidden} onChange={(v) => up({ hidden: v })} /></Setting>
         {n && <Setting title={L('فعال باشد', 'Enabled')}><Toggle on={f.enabled} onChange={(v) => up({ enabled: v })} /></Setting>}
+        <Setting title={L('مخفی کردن نام شبکه', 'Hide network name')} desc={L('در فهرست وای‌فای‌ها دیده نمی‌شود', 'Not shown in Wi-Fi lists')}>
+          <Toggle on={f.hidden} onChange={(v) => up({ hidden: v })} />
+        </Setting>
+        <Setting title={L('جداسازی دستگاه‌ها', 'Client isolation')} desc={L('دستگاه‌های این وای‌فای همدیگر را نمی‌بینند (مناسب مهمان و لوازم هوشمند)', 'Devices on this Wi-Fi can’t see each other (good for guests and smart devices)')}>
+          <Toggle on={f.isolate} onChange={(v) => up({ isolate: v })} />
+        </Setting>
       </div>
+      <details class="adv">
+        <summary><SlidersHorizontal size={16} />{L('تنظیمات پیشرفته', 'Advanced settings')}</summary>
+        <div>
+          <Setting title={L('رومینگ سریع (802.11r)', 'Fast roaming (802.11r)')} desc={L('جابه‌جایی بی‌وقفه بین چند روتر با همین نام؛ بعضی دستگاه‌های قدیمی با آن مشکل دارند', 'Seamless hand-off between access points with the same name; a few old devices dislike it')}>
+            <Toggle on={f.fastRoaming} onChange={(v) => up({ fastRoaming: v })} />
+          </Setting>
+          <div class="grid g2" style="gap:12px;padding:10px 0">
+            <Field label={L('محافظت فریم مدیریت (PMF)', 'Management frame protection')} hint={L('WPA3 همیشه حداقل «اختیاری» است', 'WPA3 always needs at least “optional”')}>
+              <select class="select" value={f.mfp || '0'} onChange={(e) => up({ mfp: (e.target as HTMLSelectElement).value })}>
+                <option value="0">{L('خاموش', 'Off')}</option>
+                <option value="1">{L('اختیاری (پیشنهادی)', 'Optional (recommended)')}</option>
+                <option value="2">{L('اجباری', 'Required')}</option>
+              </select>
+            </Field>
+            <Field label={L('حداکثر دستگاه هم‌زمان', 'Max connected devices')} hint={L('۰ = بدون محدودیت', '0 = unlimited')}>
+              <input class="input ltr" type="number" min={0} max={128} value={f.maxClients || 0} onInput={(e) => up({ maxClients: +(e.target as HTMLInputElement).value })} />
+            </Field>
+          </div>
+          <Field label={L('فیلتر آدرس MAC', 'MAC address filter')}>
+            <Seg value={f.macFilter || ''} onChange={(v: string) => up({ macFilter: v })} items={[
+              { id: '', label: L('خاموش', 'Off') },
+              { id: 'allow', label: L('فقط این‌ها وصل شوند', 'Allow only these') },
+              { id: 'deny', label: L('این‌ها وصل نشوند', 'Block these') },
+            ]} />
+          </Field>
+          {f.macFilter && (
+            <Field label={L('آدرس‌های MAC (هر خط یکی)', 'MAC addresses (one per line)')} hint={L('مراقب باشید: با «فقط این‌ها»، دستگاه خودتان را هم اضافه کنید', 'Careful: with “allow only”, include your own device')}>
+              <textarea class="textarea" rows={4} value={macText} placeholder="aa:bb:cc:dd:ee:ff" onInput={(e) => setMacText((e.target as HTMLTextAreaElement).value)} />
+            </Field>
+          )}
+        </div>
+      </details>
+      {band && <RadioCard b={band} onSaved={onSaved} />}
     </Modal>
   );
 }
@@ -310,6 +416,7 @@ function Networks({ d, reload }: { d: NetsResp; reload: () => void }) {
               {n.encryption === 'none' && <Badge tone="danger">{L('بی‌رمز', 'Open')}</Badge>}
               {n.hidden && <span class="badge">{L('مخفی', 'Hidden')}</span>}
               {!n.enabled && <span class="badge">{L('خاموش', 'Off')}</span>}
+              {n.live?.up && <span class="badge">{L('کانال', 'ch')} {digits(n.live.channel)} · {L(`${num(n.live.clients)} دستگاه`, `${n.live.clients} clients`)}</span>}
             </div>
           </div>
           <Btn sm icon kind="ghost" aria-label={L('کد QR', 'QR code')} onClick={() => setQr(n)}><QrCode size={16} /></Btn>
@@ -324,7 +431,7 @@ function Networks({ d, reload }: { d: NetsResp; reload: () => void }) {
           )}
         </div>
       ))}
-      {edit && <NetModal n={edit === 'new' ? undefined : edit} routing={d.routingSupported} onClose={() => setEdit(null)} onSaved={() => { reload(); setTimeout(reload, 4000); }} />}
+      {edit && <NetModal n={edit === 'new' ? undefined : edit} routing={d.routingSupported} bands={d.bands || []} onClose={() => setEdit(null)} onSaved={() => { reload(); setTimeout(reload, 4000); }} />}
       {qr && <QRModal ssid={qr.ssid} keyStr={qr.key} enc={qr.encryption} onClose={() => setQr(null)} />}
     </Card>
   );

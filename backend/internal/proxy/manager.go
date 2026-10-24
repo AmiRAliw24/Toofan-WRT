@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -71,12 +72,13 @@ type Manager struct {
 	testing   bool
 	crashes   []time.Time
 
-	proc      *exec.Cmd
-	cancel    context.CancelFunc
-	tail      *tailBuffer
-	exited    chan struct{}
-	runningFP string
-	ovpn      *ovpnProc
+	proc        *exec.Cmd
+	cancel      context.CancelFunc
+	tail        *tailBuffer
+	exited      chan struct{}
+	runningFP   string
+	runningBase string // fingerprint without the proxy outbound
+	ovpn        *ovpnProc
 
 	lastPreferredTry time.Time
 	lastAutoBest     time.Time
@@ -87,6 +89,9 @@ type Manager struct {
 
 func (m *Manager) Init() {
 	m.tester.XrayBin = m.XrayBin
+	if v := DetectXrayVersion(m.XrayBin); v != "" {
+		env.Logf("xray %s", v)
+	}
 	m.mode = ModeOff
 	m.kick = make(chan struct{}, 1)
 }
@@ -521,6 +526,10 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 		m.stopOpenVPN()
 	}
 	full := m.Store.Get()
+	var hosts []string
+	for _, s := range cfg.Servers {
+		hosts = append(hosts, s.Address)
+	}
 	opts := BuildOpts{
 		Server:     *srv,
 		SplitIran:  cfg.SplitIran,
@@ -529,24 +538,37 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 		SecureDNS:  SecureDNSFor(full.DNS),
 		HaveIran:   geo.FirstExisting(geo.IranDatPaths) != "",
 		KernelIran: m.KernelIran != nil && m.KernelIran(),
+		AllHosts:   hosts,
 	}
-	data, err := BuildConfig(opts)
+	data, baseFP, err := BuildConfig(opts)
 	if err != nil {
 		return err
 	}
 	fp := fmt.Sprintf("%x", sha1.Sum(data))
 	m.mu.Lock()
-	same := !force && m.procAlive() && m.activeID == id && m.runningFP == fp
+	alive := m.procAlive()
+	same := !force && alive && m.activeID == id && m.runningFP == fp
+	swappable := !force && alive && m.runningBase == baseFP && m.activeID != id
 	m.mu.Unlock()
 	if same {
 		return nil
 	}
+	// Only the server changed: swap it inside the running Xray (milliseconds)
+	// instead of restarting it and reloading every rule file (seconds).
+	if swappable {
+		if err := m.swapOutbound(*srv); err == nil {
+			m.mu.Lock()
+			m.runningFP, m.activeID = fp, id
+			m.logEvent("info", "switched live to %s", srv.Name)
+			m.mu.Unlock()
+			return nil
+		} else {
+			env.Logf("proxy: live swap failed (%v), restarting", err)
+		}
+	}
 	m.stopProc()
 	m.mu.Lock()
-	m.runningFP = fp
-	m.mu.Unlock()
-	m.mu.Lock()
-	m.activeID = id
+	m.runningFP, m.runningBase, m.activeID = fp, baseFP, id
 	m.mu.Unlock()
 	if env.Mock {
 		m.mu.Lock()
@@ -595,6 +617,43 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	msg := lastLine(tail.String())
 	m.stopProc()
 	return fmt.Errorf("engine did not open its ports in 45s: %s", msg)
+}
+
+// swapOutbound replaces the "proxy" outbound of the running Xray via its API.
+func (m *Manager) swapOutbound(srv config.Server) error {
+	if env.Mock {
+		return nil
+	}
+	ob, err := ProxyOutbound(srv)
+	if err != nil {
+		return err
+	}
+	b, _ := json.Marshal(map[string]any{"outbounds": []any{ob}})
+	path := filepath.Join(env.DataDir, "outbound.json")
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return err
+	}
+	server := "--server=" + APIAddr
+	env.Run(15*time.Second, m.XrayBin, "api", "rmo", server, "proxy")
+	if out, err := env.Run(15*time.Second, m.XrayBin, "api", "ado", server, path); err != nil {
+		return fmt.Errorf("%v %s", err, lastLine(out))
+	}
+	// Keep the on-disk config in sync for the next restart.
+	if full, _, err := BuildConfig(m.lastOpts(srv)); err == nil {
+		os.WriteFile(filepath.Join(env.DataDir, "xray.json"), full, 0o600)
+	}
+	return nil
+}
+
+func (m *Manager) lastOpts(srv config.Server) BuildOpts {
+	cfg := m.Store.Get()
+	var hosts []string
+	for _, s := range cfg.Proxy.Servers {
+		hosts = append(hosts, s.Address)
+	}
+	return BuildOpts{Server: srv, SplitIran: cfg.Proxy.SplitIran, BlockAds: cfg.DNS.BlockAds, ISPDNS: m.isp(),
+		SecureDNS: SecureDNSFor(cfg.DNS), HaveIran: geo.FirstExisting(geo.IranDatPaths) != "",
+		KernelIran: m.KernelIran != nil && m.KernelIran(), AllHosts: hosts}
 }
 
 func (m *Manager) procAlive() bool {

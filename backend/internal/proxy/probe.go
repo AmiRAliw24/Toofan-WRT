@@ -18,7 +18,9 @@ import (
 	"separ/internal/env"
 )
 
+// Ping is measured against Google, falling back to Cloudflare.
 var probeURLs = []string{
+	"https://www.google.com/generate_204",
 	"https://www.gstatic.com/generate_204",
 	"https://cp.cloudflare.com/generate_204",
 }
@@ -113,7 +115,7 @@ func (t *Tester) test(servers []config.Server, isp []string) []TestResult {
 		return mockResults(servers)
 	}
 	const base = 20000
-	cfg, ports, err := BuildTestConfig(servers, base, isp)
+	cfg, ports, perrs, err := BuildTestConfig(servers, base, isp)
 	if err != nil {
 		for i := range res {
 			res[i].Error = err.Error()
@@ -167,7 +169,10 @@ func (t *Tester) test(servers []config.Server, isp []string) []TestResult {
 	sem := make(chan struct{}, 8) // the router CPU is small
 	for i, p := range ports {
 		if p <= 0 {
-			res[i].Error = "invalid link"
+			res[i].Error = perrs[i]
+			if res[i].Error == "" {
+				res[i].Error = "invalid link"
+			}
 			continue
 		}
 		wg.Add(1)
