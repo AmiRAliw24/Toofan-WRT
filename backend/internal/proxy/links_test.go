@@ -89,8 +89,9 @@ func TestXrayAcceptsConfigs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if mode == config.IranBlock && !strings.Contains(string(data), `"domain:ir"`) {
-				t.Fatal("block mode must route Iranian domains")
+			if mode != config.IranTunnel && !strings.Contains(string(data), `"ext:iran.dat:other"`) {
+				// "ir" only lists .ir names; digikala.com and co. are in "other".
+				t.Fatal(mode + " mode must route Iranian non-.ir domains")
 			}
 			check(fmt.Sprintf("%s-%s-%c-%s-%d", s.Protocol, s.Network, 'a'+i, mode, j), data)
 		}
