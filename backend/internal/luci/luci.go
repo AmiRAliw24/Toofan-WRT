@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"separ/internal/env"
+	"separ/internal/uci"
 )
 
 const AltPort = 8081
@@ -60,15 +61,15 @@ func Set(on bool) error {
 		return err
 	}
 	// Make sure it can't grab port 80 even if someone edited the config.
-	script := "delete uhttpd.main.listen_http\n" +
-		"add_list uhttpd.main.listen_http='0.0.0.0:" + strconv.Itoa(AltPort) + "'\n" +
-		"delete uhttpd.main.listen_https\n" +
-		"set uhttpd.main.redirect_https='0'\n" +
-		"commit uhttpd\n"
-	if _, err := env.RunInput(10*time.Second, script, "uci", "batch"); err != nil {
+	err := uci.NewBatch().
+		Delete("uhttpd.main.listen_http").
+		AddList("uhttpd.main.listen_http", "0.0.0.0:"+strconv.Itoa(AltPort)).
+		Delete("uhttpd.main.listen_https").
+		Set("uhttpd.main.redirect_https", "0").Commit()
+	if err != nil {
 		return err
 	}
 	env.Run(5*time.Second, "/etc/init.d/uhttpd", "disable")
-	_, err := env.Run(20*time.Second, "/etc/init.d/uhttpd", "start")
+	_, err = env.Run(20*time.Second, "/etc/init.d/uhttpd", "start")
 	return err
 }
