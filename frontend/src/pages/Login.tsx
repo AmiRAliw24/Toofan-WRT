@@ -33,7 +33,7 @@ export function Login() {
               <div class="brand-sub">{L('پنل مدیریت روتر', 'Router panel')}</div>
             </div>
           </div>
-          <Field label={L('رمز روتر', 'Router password')} hint={L('همان رمز ورود به LuCI و SSH', 'Same as your LuCI / SSH root password')}>
+          <Field label={L('رمز روتر', 'Router password')} hint={L('همان رمز root روتر (SSH)', 'Same as the router root (SSH) password')}>
             <Password value={pw} onInput={setPw} autocomplete="current-password" />
           </Field>
           {noPw && (

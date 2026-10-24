@@ -249,6 +249,7 @@ h1, h2, h3 { text-wrap: balance; }
 .head-icon.warn { background: var(--warn-soft); color: var(--warn); }
 .head-icon.danger { background: var(--danger-soft); color: var(--danger-strong); }
 .head-icon.violet { background: var(--violet-soft); color: var(--violet); }
+.head-icon.ok { background: var(--ok-soft); color: var(--ok); }
 .head-icon.info { background: var(--info-soft); color: var(--info); }
 .card-title { font-weight: 800; font-size: 16px; line-height: 1.4; }
 .card-sub { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; }

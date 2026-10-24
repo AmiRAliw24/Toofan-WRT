@@ -31,6 +31,12 @@ func (s *Server) phase3Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/system/import", s.importSettings)
 	api.HandleFunc("GET /api/luci", s.luciGet)
 	api.HandleFunc("POST /api/luci", s.luciSet)
+	api.HandleFunc("POST /api/luci/remove", func(w http.ResponseWriter, r *http.Request) {
+		respondStatus(w, luci.Remove())
+	})
+	api.HandleFunc("POST /api/luci/install", func(w http.ResponseWriter, r *http.Request) {
+		respondStatus(w, luci.Reinstall())
+	})
 	api.HandleFunc("GET /api/network", s.netGet)
 	api.HandleFunc("POST /api/network/wan", s.netWAN)
 	api.HandleFunc("POST /api/network/lan", s.netLAN)
@@ -201,6 +207,14 @@ func (s *Server) importSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) luciGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, luci.Get())
+}
+
+func respondStatus(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
 	writeJSON(w, luci.Get())
 }
 

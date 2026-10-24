@@ -13,8 +13,6 @@ ARCH="$(uname -m)"
 case "$ARCH" in
 	armv7l) BIN=separ-armv7 ;;
 	aarch64) BIN=separ-arm64 ;;
-	x86_64) BIN=separ-amd64 ;;
-	mips*) BIN=separ-mipsle ;;
 	*) die "unsupported CPU: $ARCH" ;;
 esac
 [ -f "bin/$BIN" ] || die "bin/$BIN missing from the release"
@@ -121,8 +119,7 @@ cp uninstall.sh /usr/share/separ-uninstall.sh 2>/dev/null || true
 [ -f /etc/config/separ ] || touch /etc/config/separ
 uci -q get separ.main >/dev/null || uci set separ.main=separ
 # Separ is the router's single web interface on port 80 (8080 stays as an alias
-# for old bookmarks). LuCI stays installed but off; the panel can start it
-# temporarily on port 8081 (System -> Advanced settings).
+# for old bookmarks). LuCI is removed below once the panel answers.
 uci set separ.main.listen=':80,:8080'
 uci set separ.main.xray="$XRAY"
 uci commit separ
@@ -152,6 +149,39 @@ fi
 /etc/init.d/separ enable
 /etc/init.d/separ start
 
+# One interface only: remove LuCI, but only after Separ is confirmed to be
+# answering, so the router is never left without a web interface.
+# KEEP_LUCI=1 sh install.sh keeps it. It can be put back from the panel.
+if [ "$KEEP_LUCI" != 1 ] && [ "$PM" = opkg ] && opkg list-installed | grep -qE '^(luci|uhttpd)'; then
+	P0="$(uci -q get separ.main.listen | cut -d, -f1 | sed 's/.*://')"
+	i=0; up=0
+	while [ $i -lt 20 ]; do
+		if wget -q -T 2 -O - "http://127.0.0.1:${P0:-80}/api/ping" 2>/dev/null | grep -q version; then up=1; break; fi
+		sleep 1; i=$((i+1))
+	done
+	if [ $up = 1 ]; then
+		say "removing LuCI (Separ is now the only interface)"
+		/etc/init.d/uhttpd stop 2>/dev/null || true
+		/etc/init.d/uhttpd disable 2>/dev/null || true
+		LP="$(opkg list-installed | cut -d' ' -f1 | grep -E '^(luci|uhttpd|liblucihttp)' | tr '\n' ' ')"
+		# shellcheck disable=SC2086
+		opkg remove $LP >/dev/null 2>&1 || opkg remove --force-depends $LP >/dev/null 2>&1 || say "LuCI could not be fully removed"
+		rm -rf /www/luci-static /www/cgi-bin/luci /tmp/luci-* 2>/dev/null || true
+		[ -f /www/index.html ] && grep -q luci /www/index.html && rm -f /www/index.html || true
+	else
+		say "panel did not answer yet; LuCI was kept (it stays off)"
+	fi
+fi
+
+# /tmp lives in RAM: drop the release files once installed (the panel's own
+# updater cleans up after itself).
+if [ -z "$SEPAR_UPDATE" ]; then
+	HERE="$(pwd)"
+	case "$HERE" in /tmp/*) cd / && rm -rf "$HERE" ;; esac
+	rm -f /tmp/separ-*.tar.gz /tmp/separ-update/*.tar.gz 2>/dev/null || true
+	rm -rf /tmp/separ-update/separ 2>/dev/null || true
+fi
+
 LANIP="$(uci -q get network.lan.ipaddr | cut -d/ -f1)"
 PORT="$(uci -q get separ.main.listen | cut -d, -f1 | sed 's/.*://')"
 say "done!"
@@ -161,5 +191,5 @@ if [ "${PORT:-80}" = 80 ]; then
 else
 	echo "  پنل:  http://${LANIP:-192.168.1.1}:$PORT"
 fi
-echo "  رمز:  همان رمز root روتر (LuCI/SSH)"
+echo "  رمز:  همان رمز root روتر (SSH)"
 echo

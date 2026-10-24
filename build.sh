@@ -12,8 +12,6 @@ LDFLAGS="-s -w -X main.version=$VERSION"
 cd backend
 CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/separ-armv7" .
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/separ-arm64" .
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/separ-amd64" .
-CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/separ-mipsle" .
 cd ..
 
 cp -r openwrt/files openwrt/install.sh openwrt/uninstall.sh "$OUT/"
