@@ -85,6 +85,8 @@ command -v xray >/dev/null || die "xray binary not found after install"
 say "xray: $(xray version 2>/dev/null | head -1)"
 
 say "installing panel"
+# From here on the panel is down; whatever happens next, bring it back up.
+trap '[ -x /etc/init.d/separ ] && { /etc/init.d/separ enable; /etc/init.d/separ start; } >/dev/null 2>&1' EXIT
 /etc/init.d/separ stop 2>/dev/null || true
 # Wait for the old process to exit, then swap the binary atomically: writing
 # over a running executable fails with "Text file busy".
@@ -110,9 +112,9 @@ uci set separ.main.listen=':80,:8080'
 uci commit separ
 if [ -x /etc/init.d/uhttpd ]; then
 	say "making Separ the main interface (LuCI moved out of the way)"
-	uci -q delete uhttpd.main.listen_http
+	uci -q delete uhttpd.main.listen_http || true
 	uci add_list uhttpd.main.listen_http='0.0.0.0:8081'
-	uci -q delete uhttpd.main.listen_https
+	uci -q delete uhttpd.main.listen_https || true
 	uci set uhttpd.main.redirect_https='0'
 	uci commit uhttpd
 	/etc/init.d/uhttpd stop 2>/dev/null || true

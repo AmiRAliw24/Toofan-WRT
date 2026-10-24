@@ -35,8 +35,11 @@ func unquote(v string) string {
 	return v
 }
 
-// Batch runs uci commands in one transaction and commits the touched configs.
+// Batch collects uci changes and commits the touched configs.
+// Deletes run first, one by one, and a missing option is not an error:
+// "uci batch" would fail on it, so a re-run of the same change would break.
 type Batch struct {
+	deletes []string
 	lines   []string
 	commits map[string]bool
 }
@@ -56,8 +59,9 @@ func (b *Batch) Set(key, value string) *Batch {
 	return b
 }
 
+// Delete removes key before any Set/AddList of this batch is applied.
 func (b *Batch) Delete(key string) *Batch {
-	b.lines = append(b.lines, "delete "+key)
+	b.deletes = append(b.deletes, key)
 	b.track(key)
 	return b
 }
@@ -68,19 +72,25 @@ func (b *Batch) AddList(key, value string) *Batch {
 	return b
 }
 
-func (b *Batch) Empty() bool { return len(b.lines) == 0 }
+func (b *Batch) Empty() bool { return len(b.lines) == 0 && len(b.deletes) == 0 }
 
 func (b *Batch) Commit() error {
-	if len(b.lines) == 0 {
+	if b.Empty() {
 		return nil
 	}
-	script := strings.Join(b.lines, "\n") + "\n"
+	script := strings.Join(b.lines, "\n")
+	if script != "" {
+		script += "\n"
+	}
 	for c := range b.commits {
 		script += "commit " + c + "\n"
 	}
 	if env.Mock {
-		env.Logf("uci batch (mock):\n%s", script)
+		env.Logf("uci (mock): delete %v\n%s", b.deletes, script)
 		return nil
+	}
+	for _, k := range b.deletes {
+		env.Run(5*time.Second, "uci", "-q", "delete", k) // missing is fine
 	}
 	_, err := env.RunInput(15*time.Second, script, "uci", "batch")
 	return err
