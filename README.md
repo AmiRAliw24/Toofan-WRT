@@ -65,3 +65,8 @@ backend/   Go: API، Xray، nftables، dnsmasq، UCI، نگهبان
 frontend/  Preact + Vite: رابط کاربری
 openwrt/   اسکریپت init، نصب و حذف
 ```
+
+## Credits
+
+- Flag emoji font: [Twemoji Country Flags](https://github.com/talkjs/country-flag-emoji-polyfill) (MIT), artwork from [Twemoji](https://github.com/twitter/twemoji) under CC-BY 4.0.
+- Persian font: Vazirmatn (OFL).

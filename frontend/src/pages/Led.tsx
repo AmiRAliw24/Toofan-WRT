@@ -4,8 +4,8 @@ import { get, post } from '../api';
 import { L, num } from '../i18n';
 import { Btn, Card, CardHead, Field, Setting, Toggle, run } from '../ui';
 
-interface LEDCfg { mode: string; color: string; brightness: number; nightOff: boolean; nightFrom: string; nightTo: string }
-interface LEDResp { config: LEDCfg; supported: boolean; current: string }
+interface LEDCfg { mode: string; color: string; brightness: number; nightOff: boolean; nightFrom: string; nightTo: string; speedGood?: number; speedMid?: number }
+interface LEDResp { config: LEDCfg; supported: boolean; current: string; speedMbps: number; speedFrom: string }
 
 const palette = ['#00b894', '#0984e3', '#6c5ce7', '#e84393', '#d63031', '#fdcb6e', '#ffffff', '#00cec9'];
 
@@ -34,6 +34,7 @@ export function LedCard() {
     { id: 'auto', label: L('هوشمند خودکار', 'Smart auto') },
     { id: 'color', label: L('رنگ دلخواه', 'Custom colour') },
     { id: 'ping', label: L('نمایش پینگ', 'Show ping') },
+    { id: 'speed', label: L('نمایش سرعت', 'Show speed') },
     { id: 'off', label: L('خاموش', 'Off') },
     { id: 'default', label: L('پیش‌فرض OpenWrt', 'OpenWrt default') },
   ];
@@ -60,6 +61,37 @@ export function LedCard() {
           </div>
         )}
         {f.mode === 'ping' && <div class="small muted">{L('سبز زیر ۵۰ms، فیروزه‌ای تا ۱۲۰ms، زرد تا ۲۵۰ms، قرمز بدتر از آن', 'Green under 50 ms, cyan to 120 ms, yellow to 250 ms, red beyond')}</div>}
+        {f.mode === 'speed' && (() => {
+          const good = f.speedGood || 20;
+          const mid = f.speedMid || 5;
+          const est = d.speedMbps;
+          return (
+            <div class="stack" style="gap:10px">
+              <div class="stack" style="gap:6px">
+                <div class="row small"><span class="dot" style={{ background: '#00ff40', width: '12px', height: '12px' }} />{L(`سبز: ${num(good)} مگابیت یا بیشتر`, `Green: ${good} Mbps or more`)}</div>
+                <div class="row small"><span class="dot" style={{ background: '#ff9900', width: '12px', height: '12px' }} />{L(`زرد: ${num(mid)} تا ${num(good)} مگابیت`, `Yellow: ${mid}–${good} Mbps`)}</div>
+                <div class="row small"><span class="dot" style={{ background: '#ff0000', width: '12px', height: '12px' }} />{L(`قرمز: کمتر از ${num(mid)} مگابیت`, `Red: under ${mid} Mbps`)}</div>
+              </div>
+              <div class="grid g2" style="gap:12px">
+                <Field label={L('سبز از (مگابیت)', 'Green from (Mbps)')}>
+                  <input class="input ltr" type="number" min={2} max={10000} value={good} onInput={(e) => up({ speedGood: Math.max(2, +(e.target as HTMLInputElement).value || 0) })} />
+                </Field>
+                <Field label={L('زرد از (مگابیت)', 'Yellow from (Mbps)')}>
+                  <input class="input ltr" type="number" min={1} max={good - 1} value={mid} onInput={(e) => up({ speedMid: Math.max(1, +(e.target as HTMLInputElement).value || 0) })} />
+                </Field>
+              </div>
+              <div class="callout small">
+                {est < 0
+                  ? L('هنوز سرعتی اندازه گرفته نشده؛ یک بار تست سرعت بگیرید (تا آن موقع چراغ فیروزه‌ای آرام می‌تپد).', 'No speed known yet; run a speed test once (until then the light breathes cyan).')
+                  : <>{L('سرعت فعلی: ', 'Current speed: ')}<b class="num">{num(Math.round(est * 10) / 10)} Mbps</b>{' '}
+                    {d.speedFrom === 'traffic'
+                      ? L('(بیشترین سرعت دانلود واقعی در ۱۰ دقیقهٔ اخیر)', '(highest real download speed in the last 10 minutes)')
+                      : L('(آخرین تست سرعت)', '(last speed test)')}</>}
+              </div>
+              <div class="tiny faint">{L('معیار، آخرین تست سرعت است؛ اگر در ۱۰ دقیقهٔ اخیر دانلود واقعی سریع‌تری انجام شده باشد، همان حساب می‌شود. بدون مصرف حجم اضافه.', 'Based on the last speed test, raised by any faster real download in the last 10 minutes. No extra data is used.')}</div>
+            </div>
+          );
+        })()}
         {f.mode === 'color' && (
           <div class="row wrap" style="gap:8px">
             {palette.map((c) => (
