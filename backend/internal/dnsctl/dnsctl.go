@@ -2,6 +2,7 @@
 package dnsctl
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,10 @@ type Plan struct {
 	LogQueries bool
 }
 
+// render must only use options OpenWrt's own dnsmasq config never sets
+// with a value: a repeated single-value option (cache-size, log-async, …)
+// makes dnsmasq refuse to start, and the whole network loses DNS. Flags
+// such as no-resolv and log-queries may repeat; server= is a list.
 func render(p Plan) string {
 	var b strings.Builder
 	b.WriteString("# managed by separ - do not edit\n")
@@ -26,8 +31,6 @@ func render(p Plan) string {
 	case p.TunnelPort > 0:
 		b.WriteString("no-resolv\n")
 		fmt.Fprintf(&b, "server=127.0.0.1#%d\n", p.TunnelPort)
-		// Xray answers from its own cache; keep dnsmasq's small to follow changes.
-		b.WriteString("cache-size=1000\n")
 	case len(p.Servers) > 0:
 		b.WriteString("no-resolv\n")
 		for _, s := range p.Servers {
@@ -35,9 +38,8 @@ func render(p Plan) string {
 		}
 	}
 	if p.LogQueries {
-		// Read back by the site log (logread); async so a busy log never
-		// slows down answers.
-		b.WriteString("log-queries\nlog-async=25\n")
+		// Read back by the site log (logread).
+		b.WriteString("log-queries\n")
 	}
 	return b.String()
 }
@@ -72,12 +74,74 @@ func Apply(p Plan) error {
 		last = content
 		return nil
 	}
+	old, readErr := os.ReadFile(path)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
 	}
+	// Never restart into a config dnsmasq rejects: check it against the
+	// router's real configuration first.
+	if err := checkConfig(); err != nil {
+		if readErr == nil {
+			os.WriteFile(path, old, 0o644)
+		} else {
+			os.Remove(path)
+		}
+		return fmt.Errorf("dnsmasq rejected the DNS settings, kept the previous ones: %v", err)
+	}
 	last = content
 	_, err := env.Run(20*time.Second, "/etc/init.d/dnsmasq", "restart")
+	if !running() {
+		// Last resort: without our file dnsmasq is the stock one again.
+		os.Remove(path)
+		last = ""
+		env.Run(20*time.Second, "/etc/init.d/dnsmasq", "restart")
+		return errors.New("dnsmasq did not start with the DNS settings; they were removed so the network keeps working")
+	}
 	return err
+}
+
+// checkConfig runs dnsmasq's syntax check on each generated instance config
+// (they include our drop-in through conf-dir).
+func checkConfig() error {
+	confs, _ := filepath.Glob("/var/etc/dnsmasq.conf.*")
+	for _, c := range confs {
+		if strings.HasSuffix(c, ".tmp") {
+			continue
+		}
+		if out, err := env.Run(10*time.Second, "dnsmasq", "--test", "-C", c); err != nil {
+			return errors.New(strings.TrimSpace(out + " " + err.Error()))
+		}
+	}
+	return nil
+}
+
+// Running reports whether dnsmasq is up.
+func Running() bool {
+	if env.Mock {
+		return true
+	}
+	return running()
+}
+
+// Recover restarts dnsmasq; if it still won't run, our drop-in goes.
+func Recover() {
+	env.Run(20*time.Second, "/etc/init.d/dnsmasq", "restart")
+	if running() {
+		return
+	}
+	os.Remove(filepath.Join(confDir(), fileName))
+	last = ""
+	env.Run(20*time.Second, "/etc/init.d/dnsmasq", "restart")
+}
+
+func running() bool {
+	for i := 0; i < 10; i++ {
+		if out, err := env.Run(3*time.Second, "pidof", "dnsmasq"); err == nil && strings.TrimSpace(out) != "" {
+			return true
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return false
 }
 
 // Remove drops our file (on uninstall or stop).

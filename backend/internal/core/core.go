@@ -284,6 +284,11 @@ func (c *Core) guardLoop() {
 			env.Logf("nft table missing, restoring")
 			c.RequestApply()
 		}
+		// Without dnsmasq the whole network loses DNS.
+		if !dnsctl.Running() {
+			env.Logf("dnsmasq is not running, recovering")
+			dnsctl.Recover()
+		}
 		if k := strings.Join(c.directNetdevs(c.Store.Get()), ","); k != last {
 			last = k
 			c.RequestApply()
