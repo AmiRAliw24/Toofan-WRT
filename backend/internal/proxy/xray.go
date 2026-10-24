@@ -21,7 +21,9 @@ const (
 	OutMark = 255
 )
 
-const assetIran = "ext:iran.dat:ir"
+// Iranian domains in iran.dat: "ir" holds only .ir names; Iranian sites on
+// other TLDs (digikala.com, aparat.com, …) are in "other".
+var assetIran = []string{"ext:iran.dat:ir", "ext:iran.dat:other"}
 
 type BuildOpts struct {
 	Server    config.Server
@@ -92,7 +94,7 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	if o.IranMode == config.IranDirect {
 		iranDoms = []string{"domain:ir"}
 		if o.HaveIran {
-			iranDoms = append(iranDoms, assetIran)
+			iranDoms = append(iranDoms, assetIran...)
 		}
 	}
 
@@ -154,7 +156,7 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 		}
 		dom := []string{"domain:ir"}
 		if o.HaveIran {
-			dom = append(dom, assetIran)
+			dom = append(dom, assetIran...)
 		}
 		rules = append(rules, map[string]any{"type": "field", "domain": dom, "outboundTag": to})
 		if !o.KernelIran {
