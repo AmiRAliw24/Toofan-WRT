@@ -100,6 +100,7 @@ const stepInfo = (id: string) => ({
   engine: { t: L('موتور اینترنت آزاد', 'Free-internet engine'), h: L('هیچ سروری جواب نمی‌دهد؛ سرورها را آزمایش کنید یا اشتراک را به‌روز کنید.', 'No server answers; test servers or update the subscription.') },
   tunnel: { t: L('عبور ترافیک از تونل', 'Traffic through the tunnel'), h: L('تونل وصل است ولی ترافیک رد نمی‌شود؛ سرور دیگری انتخاب کنید.', 'The tunnel is up but passes no traffic; pick another server.') },
   'tunnel-dns': { t: L('DNS امن از تونل', 'Secure DNS via tunnel'), h: L('DNS داخل تونل جواب نمی‌دهد؛ DNS دیگری در صفحهٔ DNS انتخاب کنید.', 'DNS inside the tunnel fails; choose another provider on the DNS page.') },
+  'iran-direct': { t: L('سایت‌های ایرانی مستقیم', 'Iranian sites direct'), h: L('یک سایت ایرانی از مسیر مستقیم باز نشد؛ جزئیات همین خط علت را می‌گوید (آدرس غیرایرانی یعنی DNS از خارج جواب داده).', 'An Iranian site did not open directly; the detail on this line says why (a non-Iranian address means DNS answered from abroad).') },
   firewall: { t: L('فایروال پنل', 'Panel firewall'), h: L('قوانین فایروال اعمال نشده؛ پنل را ری‌استارت کنید.', 'Firewall rules are not loaded; restart the panel.') },
 } as Record<string, { t: string; h: string }>)[id] || { t: id, h: '' };
 

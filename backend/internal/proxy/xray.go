@@ -77,30 +77,49 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	}
 
 	isp := ispResolvers(o.ISPDNS)
-	direct := []string{}
+	hostDoms := []string{}
 	hosts := append([]string{o.Server.Address}, o.AllHosts...)
 	seen := map[string]bool{}
 	for _, h := range hosts {
 		// Proxy hostnames must be resolved outside the tunnel.
 		if h != "" && net.ParseIP(h) == nil && !seen[h] {
 			seen[h] = true
-			direct = append(direct, "full:"+h)
+			hostDoms = append(hostDoms, "full:"+h)
 		}
 	}
-	sort.Strings(direct)
+	sort.Strings(hostDoms)
+	var iranDoms []string
 	if o.IranMode == config.IranDirect {
-		direct = append(direct, "domain:ir")
+		iranDoms = []string{"domain:ir"}
 		if o.HaveIran {
-			direct = append(direct, assetIran)
+			iranDoms = append(iranDoms, assetIran)
 		}
 	}
 
+	// Iranian names must get Iranian answers: many Iranian sites sit on CDNs
+	// that hand foreign resolvers a foreign edge, which then isn't
+	// recognised as Iranian (and may not even be reachable from Iran). So
+	// they are asked of the line's own resolvers, then of Iranian public
+	// ones, never of foreign resolvers.
 	var dnsServers []any
+	directDNS := append([]string{}, isp...)
 	for _, ip := range isp {
-		if len(direct) > 0 {
+		doms := hostDoms
+		if !foreignResolver[ip] {
+			doms = append(append([]string{}, hostDoms...), iranDoms...)
+		}
+		if len(doms) > 0 {
 			dnsServers = append(dnsServers, map[string]any{
-				"address": ip, "port": 53, "domains": direct, "skipFallback": true,
+				"address": ip, "port": 53, "domains": doms, "skipFallback": true,
 			})
+		}
+	}
+	if len(iranDoms) > 0 {
+		for _, ip := range iranResolvers {
+			dnsServers = append(dnsServers, map[string]any{
+				"address": ip, "port": 53, "domains": iranDoms, "skipFallback": true,
+			})
+			directDNS = append(directDNS, ip)
 		}
 	}
 	secure := o.SecureDNS
@@ -118,8 +137,8 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	rules = append(rules,
 		map[string]any{"type": "field", "inboundTag": []string{"dns-in"}, "outboundTag": "dns-out"},
 	)
-	if len(isp) > 0 {
-		rules = append(rules, map[string]any{"type": "field", "ip": isp, "port": "53", "outboundTag": "direct"})
+	if len(directDNS) > 0 {
+		rules = append(rules, map[string]any{"type": "field", "ip": directDNS, "port": "53", "outboundTag": "direct"})
 	}
 	rules = append(rules,
 		map[string]any{"type": "field", "inboundTag": []string{"dns-internal"}, "outboundTag": "proxy"},
@@ -159,7 +178,10 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 				"settings":       map[string]any{"network": "tcp,udp", "followRedirect": true},
 				"streamSettings": map[string]any{"sockopt": map[string]any{"tproxy": "tproxy"}},
 				"sniffing": map[string]any{
-					"enabled": true, "routeOnly": true,
+					// The sniffed name replaces the IP the device resolved:
+					// the server resolves it on its side, and Iranian sites
+					// sent direct are re-resolved with Iranian DNS.
+					"enabled": true, "routeOnly": false,
 					"destOverride": []string{"http", "tls", "quic"},
 				},
 			},
@@ -237,6 +259,17 @@ func BuildTestConfig(servers []config.Server, basePort int, isp []string) ([]byt
 	b, err := json.Marshal(cfg)
 	return b, ports, errs, err
 }
+
+// Public resolvers abroad: a line configured with these gives foreign
+// answers, so Iranian names aren't sent to them.
+var foreignResolver = map[string]bool{
+	"1.1.1.1": true, "1.0.0.1": true, "8.8.8.8": true, "8.8.4.4": true, "9.9.9.9": true,
+	"149.112.112.112": true, "208.67.222.222": true, "208.67.220.220": true, "94.140.14.14": true, "94.140.15.15": true,
+}
+
+// Iranian public resolvers (Electro, Shecan), used for Iranian names after
+// the line's own resolvers.
+var iranResolvers = []string{"78.157.42.100", "185.51.200.2"}
 
 func ispResolvers(in []string) []string {
 	var out []string

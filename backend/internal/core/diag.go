@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"separ/internal/config"
 	"separ/internal/env"
 	"separ/internal/fw"
 	"separ/internal/proxy"
@@ -57,6 +58,7 @@ func (c *Core) Diagnose() DiagReport {
 			{ID: "engine", Status: "ok"},
 			{ID: "tunnel", Status: "ok", Ms: 171},
 			{ID: "tunnel-dns", Status: "ok", Ms: 190},
+			{ID: "iran-direct", Status: "ok", Ms: 64, Detail: "185.143.233.120"},
 			{ID: "firewall", Status: "ok"},
 		}
 		return rep
@@ -140,6 +142,24 @@ func (c *Core) Diagnose() DiagReport {
 		_, err := resolveVia(net.JoinHostPort("127.0.0.1", "5353"), "www.google.com")
 		return "", err
 	})
+	// "Iranian sites direct": a typical Iranian site must resolve to an
+	// Iranian address (so it skips the tunnel) and open from the line.
+	step("iran-direct", off || cfg.Proxy.IranMode != config.IranDirect || !c.Proxy.UseTunnelDNS(), func() (string, error) {
+		ips, err := resolveVia(net.JoinHostPort("127.0.0.1", "5353"), "www.digikala.com")
+		if err != nil {
+			return "", errString("Iranian names do not resolve: " + err.Error())
+		}
+		ip := ips[0]
+		if len(c.iranCIDRs) > 0 && !inCIDRs(ip, c.iranCIDRs) {
+			return "", errString(ip + " is not an Iranian address (DNS answered from abroad)")
+		}
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "443"), 5*time.Second)
+		if err != nil {
+			return "", errString(ip + " unreachable directly")
+		}
+		conn.Close()
+		return ip, nil
+	})
 	step("firewall", false, func() (string, error) {
 		if !fw.Exists() {
 			return "", errString("panel firewall table missing")
@@ -153,6 +173,19 @@ func (c *Core) Diagnose() DiagReport {
 		rep.RootCause = "foreign"
 	}
 	return rep
+}
+
+func inCIDRs(ip string, cidrs []string) bool {
+	a := net.ParseIP(ip)
+	if a == nil {
+		return false
+	}
+	for _, c := range cidrs {
+		if _, n, err := net.ParseCIDR(c); err == nil && n.Contains(a) {
+			return true
+		}
+	}
+	return false
 }
 
 type errString string
