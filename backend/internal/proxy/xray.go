@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"separ/internal/config"
+	"toofanwrt/internal/config"
 )
 
 const (

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 type Info struct {

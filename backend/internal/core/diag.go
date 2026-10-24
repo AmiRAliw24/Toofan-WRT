@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/env"
-	"separ/internal/fw"
-	"separ/internal/proxy"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/fw"
+	"toofanwrt/internal/proxy"
 )
 
 // Step is one layer of the connection chain. The first failing step is the

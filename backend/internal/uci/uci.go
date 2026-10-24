@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 // Show returns every option of a config as "config.section.option" -> value.

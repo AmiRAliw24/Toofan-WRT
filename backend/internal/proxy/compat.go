@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 // XrayVersion is detected once at start; config details differ by version.

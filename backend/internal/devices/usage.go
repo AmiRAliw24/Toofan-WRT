@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 // usage keeps per-device traffic per day for two months, so the panel can
@@ -20,7 +20,7 @@ type usage struct {
 	saved time.Time
 }
 
-const usageFile = "/etc/separ/usage.json"
+const usageFile = "/etc/toofanwrt/usage.json"
 
 type DayUsage struct {
 	Day  string `json:"day"`

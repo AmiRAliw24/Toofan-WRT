@@ -16,7 +16,7 @@ import (
 var Mock bool
 
 // DataDir is where runtime files (xray config, geo caches) are written.
-var DataDir = "/var/run/separ"
+var DataDir = "/var/run/toofanwrt"
 
 // Run executes a command with a timeout and returns trimmed stdout.
 func Run(timeout time.Duration, name string, args ...string) (string, error) {

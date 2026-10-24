@@ -5,10 +5,10 @@ import (
 	"regexp"
 	"sync"
 
-	"separ/internal/config"
-	"separ/internal/gaming"
-	"separ/internal/proxy"
-	"separ/internal/wifi"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/gaming"
+	"toofanwrt/internal/proxy"
+	"toofanwrt/internal/wifi"
 )
 
 var (

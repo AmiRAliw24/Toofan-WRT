@@ -1,6 +1,6 @@
 #!/bin/sh
-# Separ installer. Run on the router from the extracted release folder:
-#   cd /tmp/separ && sh install.sh
+# ToofanWrt installer. Run on the router from the extracted release folder:
+#   cd /tmp/toofanwrt && sh install.sh
 set -e
 cd "$(dirname "$0")"
 
@@ -11,8 +11,8 @@ die() { printf '\033[1;31mخطا / error:\033[0m %s\n' "$*" >&2; exit 1; }
 . /etc/openwrt_release
 ARCH="$(uname -m)"
 case "$ARCH" in
-	armv7l) BIN=separ-armv7 ;;
-	aarch64) BIN=separ-arm64 ;;
+	armv7l) BIN=toofanwrt-armv7 ;;
+	aarch64) BIN=toofanwrt-arm64 ;;
 	*) die "unsupported CPU: $ARCH" ;;
 esac
 [ -f "bin/$BIN" ] || die "bin/$BIN missing from the release"
@@ -85,46 +85,68 @@ command -v xray >/dev/null || die "xray binary not found after install"
 XRAY=/usr/bin/xray
 case "$ARCH" in armv7l) XBIN=bin/xray-armv7 ;; *) XBIN="" ;; esac
 if [ -n "$XBIN" ] && [ -f "$XBIN" ]; then
-	mkdir -p /usr/libexec/separ
-	cp "$XBIN" /usr/libexec/separ/xray.new && chmod 755 /usr/libexec/separ/xray.new
-	if /usr/libexec/separ/xray.new version >/dev/null 2>&1; then
-		mv -f /usr/libexec/separ/xray.new /usr/libexec/separ/xray
-		XRAY=/usr/libexec/separ/xray
+	mkdir -p /usr/libexec/toofanwrt
+	cp "$XBIN" /usr/libexec/toofanwrt/xray.new && chmod 755 /usr/libexec/toofanwrt/xray.new
+	if /usr/libexec/toofanwrt/xray.new version >/dev/null 2>&1; then
+		mv -f /usr/libexec/toofanwrt/xray.new /usr/libexec/toofanwrt/xray
+		XRAY=/usr/libexec/toofanwrt/xray
 	else
-		rm -f /usr/libexec/separ/xray.new
+		rm -f /usr/libexec/toofanwrt/xray.new
 		say "bundled Xray does not run here; using the system package"
 	fi
 fi
 say "xray: $($XRAY version 2>/dev/null | head -1)"
 
+# The panel used to be called Separ: move its settings and data over, then
+# remove the old service so the two never run side by side.
+if [ -e /etc/init.d/separ ] || [ -d /etc/separ ] || [ -f /etc/config/separ ]; then
+	say "migrating Separ -> ToofanWrt (settings are kept)"
+	/etc/init.d/separ stop 2>/dev/null || true
+	/etc/init.d/separ disable 2>/dev/null || true
+	i=0
+	while pidof separ >/dev/null 2>&1 && [ $i -lt 15 ]; do sleep 1; i=$((i+1)); done
+	pidof separ >/dev/null 2>&1 && kill -9 $(pidof separ) 2>/dev/null || true
+	if [ -d /etc/separ ] && [ ! -d /etc/toofanwrt ]; then mv /etc/separ /etc/toofanwrt; fi
+	if [ -f /etc/config/separ ] && [ ! -s /etc/config/toofanwrt ]; then
+		sed 's/^config separ /config toofanwrt /' /etc/config/separ > /etc/config/toofanwrt
+	fi
+	rm -f /etc/config/separ /etc/init.d/separ /usr/bin/separ /usr/bin/separ.prev /usr/bin/separ.new \
+		/etc/hotplug.d/iface/99-separ /lib/upgrade/keep.d/separ /usr/share/separ-uninstall.sh
+	rm -rf /usr/libexec/separ /tmp/separ-update /tmp/separ-restarting
+	nft delete table inet separ 2>/dev/null || true
+	nft delete table bridge separ 2>/dev/null || true
+	for d in /tmp/dnsmasq.d /tmp/dnsmasq.*.d; do rm -f "$d/separ.conf" 2>/dev/null || true; done
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+fi
+
 say "installing panel"
 # From here on the panel is down; whatever happens next, bring it back up.
-trap '[ -x /etc/init.d/separ ] && { /etc/init.d/separ enable; /etc/init.d/separ start; } >/dev/null 2>&1' EXIT
-/etc/init.d/separ stop 2>/dev/null || true
+trap '[ -x /etc/init.d/toofanwrt ] && { /etc/init.d/toofanwrt enable; /etc/init.d/toofanwrt start; } >/dev/null 2>&1' EXIT
+/etc/init.d/toofanwrt stop 2>/dev/null || true
 # Wait for the old process to exit, then swap the binary atomically: writing
 # over a running executable fails with "Text file busy".
 i=0
-while pidof separ >/dev/null 2>&1 && [ $i -lt 15 ]; do sleep 1; i=$((i+1)); done
-pidof separ >/dev/null 2>&1 && kill -9 $(pidof separ) 2>/dev/null || true
-cp "bin/$BIN" /usr/bin/separ.new
-chmod 755 /usr/bin/separ.new
-mv -f /usr/bin/separ.new /usr/bin/separ
-cp files/etc/init.d/separ /etc/init.d/separ
-chmod 755 /etc/init.d/separ
-mkdir -p /lib/upgrade/keep.d /etc/hotplug.d/iface /etc/separ
-cp files/lib/upgrade/keep.d/separ /lib/upgrade/keep.d/separ
-cp files/etc/hotplug.d/iface/99-separ /etc/hotplug.d/iface/99-separ
-cp uninstall.sh /usr/share/separ-uninstall.sh 2>/dev/null || true
+while pidof toofanwrt >/dev/null 2>&1 && [ $i -lt 15 ]; do sleep 1; i=$((i+1)); done
+pidof toofanwrt >/dev/null 2>&1 && kill -9 $(pidof toofanwrt) 2>/dev/null || true
+cp "bin/$BIN" /usr/bin/toofanwrt.new
+chmod 755 /usr/bin/toofanwrt.new
+mv -f /usr/bin/toofanwrt.new /usr/bin/toofanwrt
+cp files/etc/init.d/toofanwrt /etc/init.d/toofanwrt
+chmod 755 /etc/init.d/toofanwrt
+mkdir -p /lib/upgrade/keep.d /etc/hotplug.d/iface /etc/toofanwrt
+cp files/lib/upgrade/keep.d/toofanwrt /lib/upgrade/keep.d/toofanwrt
+cp files/etc/hotplug.d/iface/99-toofanwrt /etc/hotplug.d/iface/99-toofanwrt
+cp uninstall.sh /usr/share/toofanwrt-uninstall.sh 2>/dev/null || true
 
-[ -f /etc/config/separ ] || touch /etc/config/separ
-uci -q get separ.main >/dev/null || uci set separ.main=separ
-# Separ is the router's single web interface on port 80 (8080 stays as an alias
+[ -f /etc/config/toofanwrt ] || touch /etc/config/toofanwrt
+uci -q get toofanwrt.main >/dev/null || uci set toofanwrt.main=toofanwrt
+# ToofanWrt is the router's single web interface on port 80 (8080 stays as an alias
 # for old bookmarks). LuCI is removed below once the panel answers.
-uci set separ.main.listen=':80,:8080'
-uci set separ.main.xray="$XRAY"
-uci commit separ
+uci set toofanwrt.main.listen=':80,:8080'
+uci set toofanwrt.main.xray="$XRAY"
+uci commit toofanwrt
 if [ -x /etc/init.d/uhttpd ]; then
-	say "making Separ the main interface (LuCI moved out of the way)"
+	say "making ToofanWrt the main interface (LuCI moved out of the way)"
 	uci -q delete uhttpd.main.listen_http || true
 	uci add_list uhttpd.main.listen_http='0.0.0.0:8081'
 	uci -q delete uhttpd.main.listen_https || true
@@ -133,6 +155,16 @@ if [ -x /etc/init.d/uhttpd ]; then
 	/etc/init.d/uhttpd stop 2>/dev/null || true
 	/etc/init.d/uhttpd disable 2>/dev/null || true
 fi
+
+# Router identity: name it ToofanWrt unless the owner already chose a name,
+# and greet SSH logins with it (OpenWrt's banner is kept as banner.openwrt).
+if [ "$(uci -q get system.@system[0].hostname)" = "OpenWrt" ]; then
+	uci set system.@system[0].hostname='ToofanWrt'
+	uci commit system
+	echo ToofanWrt > /proc/sys/kernel/hostname 2>/dev/null || true
+fi
+[ -f /etc/banner ] && [ ! -f /etc/banner.openwrt ] && cp /etc/banner /etc/banner.openwrt
+cp files/etc/banner /etc/banner 2>/dev/null || true
 
 # Software flow offloading skips nftables for established connections,
 # which would hide per-device speeds and break per-device limits.
@@ -146,21 +178,21 @@ fi
 # Xray's own init script must not start a second copy.
 [ -x /etc/init.d/xray ] && { /etc/init.d/xray stop 2>/dev/null; /etc/init.d/xray disable 2>/dev/null; } || true
 
-/etc/init.d/separ enable
-/etc/init.d/separ start
+/etc/init.d/toofanwrt enable
+/etc/init.d/toofanwrt start
 
-# One interface only: remove LuCI, but only after Separ is confirmed to be
+# One interface only: remove LuCI, but only after ToofanWrt is confirmed to be
 # answering, so the router is never left without a web interface.
 # KEEP_LUCI=1 sh install.sh keeps it. It can be put back from the panel.
 if [ "$KEEP_LUCI" != 1 ] && [ "$PM" = opkg ] && opkg list-installed | grep -qE '^(luci|uhttpd)'; then
-	P0="$(uci -q get separ.main.listen | cut -d, -f1 | sed 's/.*://')"
+	P0="$(uci -q get toofanwrt.main.listen | cut -d, -f1 | sed 's/.*://')"
 	i=0; up=0
 	while [ $i -lt 20 ]; do
 		if wget -q -T 2 -O - "http://127.0.0.1:${P0:-80}/api/ping" 2>/dev/null | grep -q version; then up=1; break; fi
 		sleep 1; i=$((i+1))
 	done
 	if [ $up = 1 ]; then
-		say "removing LuCI (Separ is now the only interface)"
+		say "removing LuCI (ToofanWrt is now the only interface)"
 		/etc/init.d/uhttpd stop 2>/dev/null || true
 		/etc/init.d/uhttpd disable 2>/dev/null || true
 		LP="$(opkg list-installed | cut -d' ' -f1 | grep -E '^(luci|uhttpd|liblucihttp)' | tr '\n' ' ')"
@@ -175,15 +207,15 @@ fi
 
 # /tmp lives in RAM: drop the release files once installed (the panel's own
 # updater cleans up after itself).
-if [ -z "$SEPAR_UPDATE" ]; then
+if [ -z "$TOOFAN_UPDATE" ] && [ -z "$SEPAR_UPDATE" ]; then
 	HERE="$(pwd)"
 	case "$HERE" in /tmp/*) cd / && rm -rf "$HERE" ;; esac
-	rm -f /tmp/separ-*.tar.gz /tmp/separ-update/*.tar.gz 2>/dev/null || true
-	rm -rf /tmp/separ-update/separ 2>/dev/null || true
+	rm -f /tmp/toofanwrt-*.tar.gz /tmp/toofanwrt-update/*.tar.gz 2>/dev/null || true
+	rm -rf /tmp/toofanwrt-update/toofanwrt 2>/dev/null || true
 fi
 
 LANIP="$(uci -q get network.lan.ipaddr | cut -d/ -f1)"
-PORT="$(uci -q get separ.main.listen | cut -d, -f1 | sed 's/.*://')"
+PORT="$(uci -q get toofanwrt.main.listen | cut -d, -f1 | sed 's/.*://')"
 say "done!"
 echo
 if [ "${PORT:-80}" = 80 ]; then

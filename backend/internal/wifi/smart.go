@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 // ChannelScore is the measured congestion of one candidate channel.

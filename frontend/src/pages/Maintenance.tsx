@@ -24,7 +24,7 @@ function upload(path: string, file: File, onProgress: (p: number) => void): Prom
     const x = new XMLHttpRequest();
     x.open('POST', '/api' + path);
     x.setRequestHeader('Content-Type', 'application/octet-stream');
-    x.setRequestHeader('X-Separ-Upload', '1');
+    x.setRequestHeader('X-ToofanWrt-Upload', '1');
     x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     x.onload = () => {
       let d: any = {};
@@ -146,7 +146,7 @@ export function UpdateCard() {
           <div class="row" style="align-items:flex-end">
             <div class="grow">
               <Field label={L('منبع به‌روزرسانی (manifest)', 'Update source (manifest)')} hint={L('آدرس فایل JSON نسخه‌ها', 'URL of the release JSON')}>
-                <input class="input ltr" value={source} placeholder="https://…/separ/latest.json" onInput={(e) => setSource((e.target as HTMLInputElement).value)} />
+                <input class="input ltr" value={source} placeholder="https://…/toofanwrt/latest.json" onInput={(e) => setSource((e.target as HTMLInputElement).value)} />
               </Field>
             </div>
             <Btn onClick={async () => { await run(() => post('/update/source', { url: source }), L('ذخیره شد', 'Saved')); setShowSource(false); }}>{L('ذخیره', 'Save')}</Btn>
@@ -216,7 +216,7 @@ export function BackupCard() {
 
 interface LuciStatus { installed: boolean; running: boolean; port: number; busy?: string; error?: string }
 
-/** LuciCard: OpenWrt's own interface. Separ removes it so there is only one
+/** LuciCard: OpenWrt's own interface. ToofanWrt removes it so there is only one
  *  interface; it can be put back, or (while installed) opened temporarily. */
 export function LuciCard() {
   const [st, setSt] = useState<LuciStatus | null>(null);
@@ -252,7 +252,7 @@ export function LuciCard() {
     return (
       <Card>
         <CardHead icon={<CheckCircle2 size={20} />} tone="ok" title={L('رابط LuCI حذف شده است', 'LuCI is removed')}
-          sub={L('سپر تنها رابط مدیریت روتر است. اگر روزی لازم شد، LuCI را می‌توانید دوباره نصب کنید (به اینترنت نیاز دارد).', 'Separ is the router’s only interface. If you ever need it, LuCI can be installed again (needs internet).')} />
+          sub={L('ToofanWrt تنها رابط مدیریت روتر است. اگر روزی لازم شد، LuCI را می‌توانید دوباره نصب کنید (به اینترنت نیاز دارد).', 'ToofanWrt is the router’s only interface. If you ever need it, LuCI can be installed again (needs internet).')} />
         {st.error && <div class="card-body"><div class="callout danger small">{st.error}</div></div>}
         <div class="card-foot">
           <Btn busy={busy} onClick={async () => {
@@ -266,12 +266,12 @@ export function LuciCard() {
   return (
     <Card>
       <CardHead icon={<Wrench size={20} />} title={L('رابط LuCI', 'LuCI interface')}
-        sub={L('رابط پیش‌فرض OpenWrt هنوز روی روتر نصب است. سپر همهٔ کارها را انجام می‌دهد؛ می‌توانید LuCI را کامل حذف کنید تا فقط یک رابط بماند.', 'OpenWrt’s default interface is still installed. Separ does everything; remove LuCI so only one interface is left.')}
+        sub={L('رابط پیش‌فرض OpenWrt هنوز روی روتر نصب است. ToofanWrt همهٔ کارها را انجام می‌دهد؛ می‌توانید LuCI را کامل حذف کنید تا فقط یک رابط بماند.', 'OpenWrt’s default interface is still installed. ToofanWrt does everything; remove LuCI so only one interface is left.')}
         action={<span class={'badge' + (st.running ? ' warn' : '')}>{st.running ? L('روشن', 'On') : L('خاموش', 'Off')}</span>} />
       {st.error && <div class="card-body"><div class="callout danger small">{st.error}</div></div>}
       <div class="card-foot">
         <Btn kind="danger" busy={busy} onClick={async () => {
-          if (await confirmDialog(L('LuCI به‌طور کامل از روتر حذف می‌شود و سپر تنها رابط مدیریت می‌ماند. هر وقت خواستید از همین‌جا دوباره نصبش کنید. ادامه می‌دهید؟', 'LuCI will be removed and Separ stays the only interface. You can reinstall it here any time. Continue?'), true)) act('/luci/remove');
+          if (await confirmDialog(L('LuCI به‌طور کامل از روتر حذف می‌شود و ToofanWrt تنها رابط مدیریت می‌ماند. هر وقت خواستید از همین‌جا دوباره نصبش کنید. ادامه می‌دهید؟', 'LuCI will be removed and ToofanWrt stays the only interface. You can reinstall it here any time. Continue?'), true)) act('/luci/remove');
         }}><Trash2 size={17} />{L('حذف کامل LuCI', 'Remove LuCI completely')}</Btn>
         {st.running ? (
           <>

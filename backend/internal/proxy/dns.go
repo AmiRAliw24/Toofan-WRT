@@ -3,7 +3,7 @@ package proxy
 import (
 	"strings"
 
-	"separ/internal/config"
+	"toofanwrt/internal/config"
 )
 
 type DNSProvider struct {

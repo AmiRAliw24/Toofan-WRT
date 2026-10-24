@@ -1,4 +1,4 @@
-// Package luci keeps OpenWrt's own web interface out of the way: Separ is
+// Package luci keeps OpenWrt's own web interface out of the way: ToofanWrt is
 // the router's single interface on port 80. LuCI can be removed entirely,
 // put back from the package feed, or (while installed) switched on
 // temporarily (until reboot) on AltPort for rare advanced settings.
@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/uci"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/uci"
 )
 
 const AltPort = 8081

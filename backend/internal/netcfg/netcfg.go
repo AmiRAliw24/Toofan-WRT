@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/uci"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/uci"
 )
 
 type WAN struct {

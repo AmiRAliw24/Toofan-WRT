@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"separ/internal/config"
+	"toofanwrt/internal/config"
 )
 
 var sampleLinks = []string{

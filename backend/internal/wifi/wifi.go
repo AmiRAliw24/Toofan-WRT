@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/uci"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/uci"
 )
 
 type Band struct {
@@ -52,10 +52,10 @@ var (
 	mockState = State{
 		Country: "IR",
 		Bands: []Band{
-			{Band: "2g", Radio: "radio0", Section: "default_radio0", Enabled: true, SSID: "Separ-Home", Key: "supersecret123", Encryption: "sae-mixed", Channel: "1", HTMode: "HT20", Channels: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}},
-			{Band: "5g", Radio: "radio1", Section: "default_radio1", Enabled: true, SSID: "Separ-Home-5G", Key: "supersecret123", Encryption: "sae-mixed", Channel: "36", HTMode: "VHT80", Channels: []int{36, 40, 44, 48, 149, 153, 157, 161}},
+			{Band: "2g", Radio: "radio0", Section: "default_radio0", Enabled: true, SSID: "ToofanWrt-Home", Key: "supersecret123", Encryption: "sae-mixed", Channel: "1", HTMode: "HT20", Channels: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}},
+			{Band: "5g", Radio: "radio1", Section: "default_radio1", Enabled: true, SSID: "ToofanWrt-Home-5G", Key: "supersecret123", Encryption: "sae-mixed", Channel: "36", HTMode: "VHT80", Channels: []int{36, 40, 44, 48, 149, 153, 157, 161}},
 		},
-		Guest: Guest{SSID: "Separ-Guest", Encryption: "psk2", Key: "welcome2024"},
+		Guest: Guest{SSID: "ToofanWrt-Guest", Encryption: "psk2", Key: "welcome2024"},
 	}
 )
 

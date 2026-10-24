@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/env"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/env"
 )
 
 // Ping is measured against Google, falling back to Cloudflare. Plain HTTP:

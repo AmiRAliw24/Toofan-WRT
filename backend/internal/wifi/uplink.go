@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/uci"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/uci"
 )
 
 // The router can take its internet from another Wi-Fi network (the modem)

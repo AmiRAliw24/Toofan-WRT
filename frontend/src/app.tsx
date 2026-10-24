@@ -3,7 +3,7 @@ import { useEffect, useErrorBoundary, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import {
   Bell, Globe, Home as HomeIcon, Languages, LogOut, Menu, Moon, RefreshCw, Settings, Shield,
-  ShieldCheck, Smartphone, Sun, Wifi, Lock, Gamepad2,
+  Smartphone, Tornado, Sun, Wifi, Lock, Gamepad2,
 } from 'lucide-preact';
 import { authed, get, post, type Overview } from './api';
 import { L, lang, setLang, num, ago } from './i18n';
@@ -200,9 +200,9 @@ export function App() {
       {menu && <div class="scrim" onClick={() => setMenu(false)} />}
       <aside class={'sidebar' + (menu ? ' open' : '')}>
         <div class="brand">
-          <div class="brand-logo"><ShieldCheck size={22} /></div>
+          <div class="brand-logo"><Tornado size={22} /></div>
           <div>
-            <div class="brand-name">{L('سپر', 'Separ')}</div>
+            <div class="brand-name">ToofanWrt</div>
             <div class="brand-sub">{overview.value?.system.model || L('پنل مدیریت روتر', 'Router panel')}</div>
           </div>
         </div>

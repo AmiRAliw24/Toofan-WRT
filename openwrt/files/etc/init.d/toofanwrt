@@ -1,23 +1,23 @@
 #!/bin/sh /etc/rc.common
-# Separ router panel
+# ToofanWrt router panel
 
 START=99
 STOP=10
 USE_PROCD=1
 
-PROG=/usr/bin/separ
+PROG=/usr/bin/toofanwrt
 
 start_service() {
 	local listen
-	listen="$(uci -q get separ.main.listen)"
+	listen="$(uci -q get toofanwrt.main.listen)"
 	[ -n "$listen" ] || listen=":80,:8080"
 
 	local xray
-	xray="$(uci -q get separ.main.xray)"
+	xray="$(uci -q get toofanwrt.main.xray)"
 	[ -x "$xray" ] || xray=/usr/bin/xray
 
 	procd_open_instance
-	procd_set_param command "$PROG" -listen "$listen" -config /etc/separ/config.json -xray "$xray"
+	procd_set_param command "$PROG" -listen "$listen" -config /etc/toofanwrt/config.json -xray "$xray"
 	procd_set_param respawn 3600 5 0
 	procd_set_param stdout 1
 	procd_set_param stderr 1
@@ -26,5 +26,5 @@ start_service() {
 }
 
 service_triggers() {
-	procd_add_reload_trigger "separ"
+	procd_add_reload_trigger "toofanwrt"
 }

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/fw"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/fw"
 )
 
 type Device struct {
@@ -475,10 +475,10 @@ func (t *Tracker) mockDiscover() {
 		d := &Device{MAC: mac, IP: ip, Hostname: host, Link: link, Online: online, Vendor: Vendor(mac),
 			RandomMAC: isRandomMAC(mac), LastSeen: now, GuessType: guessType(host, link), LeaseExpires: now + 30000}
 		if strings.HasPrefix(link, "wifi") {
-			d.Signal, d.Noise, d.SSID, d.WifiGen = -50-rand.Intn(25), -95, "Separ", 5
+			d.Signal, d.Noise, d.SSID, d.WifiGen = -50-rand.Intn(25), -95, "ToofanWrt", 5
 			d.RxMbps, d.TxMbps, d.ConnectedSec = 390, 433.3, 5400
 			if link == "wifi24" {
-				d.SSID, d.WifiGen, d.RxMbps, d.TxMbps = "Separ", 4, 65, 72.2
+				d.SSID, d.WifiGen, d.RxMbps, d.TxMbps = "ToofanWrt", 4, 65, 72.2
 			}
 		}
 		if online {

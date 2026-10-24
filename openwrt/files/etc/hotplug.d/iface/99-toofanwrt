@@ -2,5 +2,5 @@
 # Re-sync the panel's firewall/DNS when an uplink comes up (new ISP DNS, etc.).
 [ "$ACTION" = ifup ] || exit 0
 case "$INTERFACE" in wan|wwan) ;; *) exit 0 ;; esac
-/etc/init.d/separ enabled && /etc/init.d/separ running && kill -HUP "$(pidof separ)" 2>/dev/null
+/etc/init.d/toofanwrt enabled && /etc/init.d/toofanwrt running && kill -HUP "$(pidof toofanwrt)" 2>/dev/null
 exit 0

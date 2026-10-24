@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/env"
-	"separ/internal/fw"
-	"separ/internal/luci"
-	"separ/internal/netcfg"
-	"separ/internal/proxy"
-	"separ/internal/update"
-	"separ/internal/wifi"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/fw"
+	"toofanwrt/internal/luci"
+	"toofanwrt/internal/netcfg"
+	"toofanwrt/internal/proxy"
+	"toofanwrt/internal/update"
+	"toofanwrt/internal/wifi"
 )
 
 func (s *Server) phase3Routes(api *http.ServeMux) {
@@ -95,9 +95,9 @@ func (s *Server) updateInstall(w http.ResponseWriter, r *http.Request) {
 // saveUpload stores a raw request body (max 128 MB) in a temp file.
 func saveUpload(w http.ResponseWriter, r *http.Request, name string) (string, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, 128<<20)
-	dir := "/tmp/separ-update"
+	dir := "/tmp/toofanwrt-update"
 	if env.Mock {
-		dir = filepath.Join(os.TempDir(), "separ-update")
+		dir = filepath.Join(os.TempDir(), "toofanwrt-update")
 	}
 	os.MkdirAll(dir, 0o700)
 	path := filepath.Join(dir, name)
@@ -186,7 +186,7 @@ func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
 // schedules...). It contains server credentials, like the router backup.
 func (s *Server) exportSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"separ-settings-"+time.Now().Format("2006-01-02")+".json\"")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"toofanwrt-settings-"+time.Now().Format("2006-01-02")+".json\"")
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.Encode(s.core.Store.Get())
