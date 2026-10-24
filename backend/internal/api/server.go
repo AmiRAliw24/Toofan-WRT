@@ -65,6 +65,11 @@ func (s *Server) Handler() http.Handler {
 
 	api.HandleFunc("GET /api/devices", s.devicesGet)
 	api.HandleFunc("POST /api/devices/{mac}", s.deviceSet)
+	api.HandleFunc("GET /api/devices/{mac}/info", s.deviceInfo)
+	api.HandleFunc("POST /api/devices/{mac}/wake", s.deviceWake)
+	api.HandleFunc("GET /api/sites", s.sitesGet)
+	api.HandleFunc("POST /api/sites", s.sitesSet)
+	api.HandleFunc("DELETE /api/sites", s.sitesClear)
 	api.HandleFunc("GET /api/schedules", s.schedulesGet)
 	api.HandleFunc("POST /api/schedules", s.scheduleSave)
 	api.HandleFunc("DELETE /api/schedules/{id}", s.scheduleDelete)
@@ -615,6 +620,61 @@ func (s *Server) proxyLogs(w http.ResponseWriter, r *http.Request) {
 
 var macRe = regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`)
 
+// deviceInfo is the detail view: usage history, reservation, connections.
+func (s *Server) deviceInfo(w http.ResponseWriter, r *http.Request) {
+	mac := strings.ToLower(r.PathValue("mac"))
+	if !macRe.MatchString(mac) {
+		writeErr(w, http.StatusBadRequest, "invalid MAC")
+		return
+	}
+	days := s.core.Devices.Usage(mac, 30)
+	md, mu := s.core.Devices.MonthUsage(mac)
+	ip := s.core.Devices.IPs()[mac]
+	writeJSON(w, map[string]any{
+		"days":        days,
+		"today":       days[len(days)-1],
+		"month":       map[string]uint64{"down": md, "up": mu},
+		"staticIp":    devices.StaticIP(mac),
+		"connections": devices.Connections(ip),
+		"sites":       len(s.core.Sites.Sites(mac)),
+		"firstSeen":   s.core.Store.Get().Devices[mac].FirstSeen,
+	})
+}
+
+func (s *Server) deviceWake(w http.ResponseWriter, r *http.Request) {
+	respond(w, devices.Wake(strings.ToLower(r.PathValue("mac"))))
+}
+
+func (s *Server) sitesGet(w http.ResponseWriter, r *http.Request) {
+	mac := strings.ToLower(r.URL.Query().Get("mac"))
+	writeJSON(w, map[string]any{
+		"enabled": s.core.Store.Get().DNS.LogSites,
+		"since":   s.core.Sites.Since(),
+		"sites":   s.core.Sites.Sites(mac),
+		"counts":  s.core.Sites.Counts(),
+	})
+}
+
+func (s *Server) sitesSet(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Enabled bool `json:"enabled"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	// Start recording now; dnsmasq follows with the (debounced) apply.
+	s.core.Sites.SetEnabled(in.Enabled)
+	respond(w, s.core.Store.Update(func(c *config.Config) error {
+		c.DNS.LogSites = in.Enabled
+		return nil
+	}))
+}
+
+func (s *Server) sitesClear(w http.ResponseWriter, r *http.Request) {
+	s.core.Sites.Clear(strings.ToLower(r.URL.Query().Get("mac")))
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
 func (s *Server) devicesGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.deviceViews())
 }
@@ -628,6 +688,16 @@ func (s *Server) deviceSet(w http.ResponseWriter, r *http.Request) {
 	var in map[string]json.RawMessage
 	if !decode(w, r, &in) {
 		return
+	}
+	// The address reservation lives in OpenWrt's DHCP config, not ours.
+	if v, ok := in["staticIp"]; ok {
+		var ip, name string
+		json.Unmarshal(v, &ip)
+		json.Unmarshal(in["name"], &name)
+		if err := devices.SetStaticIP(mac, strings.TrimSpace(ip), name); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	respond(w, s.core.Store.Update(func(c *config.Config) error {
 		d := c.Devices[mac]

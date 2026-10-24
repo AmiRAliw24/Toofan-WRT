@@ -30,6 +30,16 @@ type Device struct {
 	UpTotal   uint64  `json:"upTotal"`
 	LastSeen  int64   `json:"lastSeen"`
 	GuessType string  `json:"guessType"`
+	Vendor    string  `json:"vendor,omitempty"`
+	// Wi-Fi association details (empty on cable).
+	SSID         string  `json:"ssid,omitempty"`
+	WifiGen      int     `json:"wifiGen,omitempty"` // 4, 5, 6 (802.11n/ac/ax)
+	RxMbps       float64 `json:"rxMbps,omitempty"`  // link rate device -> router
+	TxMbps       float64 `json:"txMbps,omitempty"`  // link rate router -> device
+	Noise        int     `json:"noise,omitempty"`
+	ConnectedSec int64   `json:"connectedSec,omitempty"`
+	OnlineSince  int64   `json:"onlineSince,omitempty"`
+	LeaseExpires int64   `json:"leaseExpires,omitempty"`
 }
 
 type Tracker struct {
@@ -39,11 +49,12 @@ type Tracker struct {
 	prevDn       map[string]uint64
 	prevAt       time.Time
 	ipSet        string
+	usage        *usage
 	OnIPsChanged func() // firewall must add counters for new IPs
 }
 
 func NewTracker() *Tracker {
-	return &Tracker{devs: map[string]*Device{}, prevUp: map[string]uint64{}, prevDn: map[string]uint64{}}
+	return &Tracker{devs: map[string]*Device{}, prevUp: map[string]uint64{}, prevDn: map[string]uint64{}, usage: newUsage()}
 }
 
 func (t *Tracker) Run() {
@@ -167,6 +178,7 @@ func (t *Tracker) discover() {
 	for mac, l := range leases {
 		d := get(mac)
 		d.IP = l.ip
+		d.LeaseExpires = l.expires
 		if l.host != "" && l.host != "*" {
 			d.Hostname = l.host
 		}
@@ -187,6 +199,7 @@ func (t *Tracker) discover() {
 	for mac, w := range wifi {
 		d := get(mac)
 		d.Online, d.LastSeen, d.Link, d.Signal = true, now, w.link, w.signal
+		d.SSID, d.WifiGen, d.RxMbps, d.TxMbps, d.Noise, d.ConnectedSec = w.ssid, w.gen, w.rxMbps, w.txMbps, w.noise, w.connected
 	}
 	for mac, d := range t.devs {
 		_, inWifi := wifi[mac]
@@ -198,6 +211,17 @@ func (t *Tracker) discover() {
 		}
 		if !inWifi && inArp && a.reachable {
 			d.Link = a.link // on the bridge but not associated: wired
+		}
+		if !inWifi {
+			d.SSID, d.WifiGen, d.RxMbps, d.TxMbps, d.Noise, d.ConnectedSec = "", 0, 0, 0, 0, 0
+		}
+		if d.Online && d.OnlineSince == 0 {
+			d.OnlineSince = now
+		} else if !d.Online {
+			d.OnlineSince = 0
+		}
+		if d.Vendor == "" {
+			d.Vendor = Vendor(mac)
 		}
 		d.GuessType = guessType(d.Hostname, d.Link)
 		if !seen[mac] && now-d.LastSeen > 7*86400 {
@@ -230,6 +254,7 @@ func (t *Tracker) sampleTraffic() {
 				d.UpBps = base / 6 * rand.Float64()
 				d.DownTotal += uint64(d.DownBps * 2)
 				d.UpTotal += uint64(d.UpBps * 2)
+				t.usage.add(d.MAC, uint64(d.DownBps*2), uint64(d.UpBps*2), time.Now())
 			}
 		}
 		t.mu.Unlock()
@@ -251,26 +276,32 @@ func (t *Tracker) sampleTraffic() {
 		pu, pd := t.prevUp[d.IP], t.prevDn[d.IP]
 		if !t.prevAt.IsZero() && sec > 0 {
 			// Counters reset whenever the table is reloaded.
-			if u >= pu {
-				d.UpBps = float64(u-pu) / sec
-				d.UpTotal += u - pu
-			} else {
+			du, dd := u-pu, dw-pd
+			if u < pu {
+				du = u
+			}
+			if dw < pd {
+				dd = dw
+			}
+			d.UpBps, d.DownBps = float64(du)/sec, float64(dd)/sec
+			if u < pu {
 				d.UpBps = 0
-				d.UpTotal += u
 			}
-			if dw >= pd {
-				d.DownBps = float64(dw-pd) / sec
-				d.DownTotal += dw - pd
-			} else {
+			if dw < pd {
 				d.DownBps = 0
-				d.DownTotal += dw
 			}
+			d.UpTotal += du
+			d.DownTotal += dd
+			t.usage.add(d.MAC, dd, du, now)
 		}
 	}
 	t.prevUp, t.prevDn, t.prevAt = up, dn, now
 }
 
-type lease struct{ ip, host string }
+type lease struct {
+	ip, host string
+	expires  int64
+}
 
 func readLeases() map[string]lease {
 	out := map[string]lease{}
@@ -283,7 +314,8 @@ func readLeases() map[string]lease {
 	for sc.Scan() {
 		fs := strings.Fields(sc.Text())
 		if len(fs) >= 4 && strings.Count(fs[2], ".") == 3 {
-			out[strings.ToLower(fs[1])] = lease{ip: fs[2], host: fs[3]}
+			exp, _ := strconv.ParseInt(fs[0], 10, 64) // 0 = static (infinite)
+			out[strings.ToLower(fs[1])] = lease{ip: fs[2], host: fs[3], expires: exp}
 		}
 	}
 	return out
@@ -332,8 +364,21 @@ func readARP() map[string]arpEntry {
 }
 
 type wifiClient struct {
-	link   string
-	signal int
+	link      string
+	signal    int
+	ssid      string
+	gen       int
+	rxMbps    float64
+	txMbps    float64
+	noise     int
+	connected int64
+}
+
+type iwRate struct {
+	Rate int  `json:"rate"` // kbit/s
+	HT   bool `json:"ht"`
+	VHT  bool `json:"vht"`
+	HE   bool `json:"he"`
 }
 
 // readWifiClients asks rpcd's iwinfo module for every AP interface.
@@ -355,6 +400,7 @@ func readWifiClients() map[string]wifiClient {
 		var info struct {
 			Mode      string `json:"mode"`
 			Frequency int    `json:"frequency"`
+			SSID      string `json:"ssid"`
 		}
 		json.Unmarshal([]byte(infoJSON), &info)
 		if info.Mode != "Master" {
@@ -373,13 +419,27 @@ func readWifiClients() map[string]wifiClient {
 		}
 		var assoc struct {
 			Results []struct {
-				MAC    string `json:"mac"`
-				Signal int    `json:"signal"`
+				MAC       string `json:"mac"`
+				Signal    int    `json:"signal"`
+				Noise     int    `json:"noise"`
+				Connected int64  `json:"connected_time"`
+				Rx        iwRate `json:"rx"`
+				Tx        iwRate `json:"tx"`
 			} `json:"results"`
 		}
 		json.Unmarshal([]byte(assocJSON), &assoc)
 		for _, r := range assoc.Results {
-			out[strings.ToLower(r.MAC)] = wifiClient{link: link, signal: r.Signal}
+			gen := 0
+			switch {
+			case r.Rx.HE || r.Tx.HE:
+				gen = 6
+			case r.Rx.VHT || r.Tx.VHT:
+				gen = 5
+			case r.Rx.HT || r.Tx.HT:
+				gen = 4
+			}
+			out[strings.ToLower(r.MAC)] = wifiClient{link: link, signal: r.Signal, ssid: info.SSID, gen: gen,
+				rxMbps: float64(r.Rx.Rate) / 1000, txMbps: float64(r.Tx.Rate) / 1000, noise: r.Noise, connected: r.Connected}
 		}
 	}
 	return out
@@ -412,10 +472,21 @@ func (t *Tracker) mockDiscover() {
 	}
 	now := time.Now().Unix()
 	add := func(mac, ip, host, link string, online bool) {
-		t.devs[mac] = &Device{MAC: mac, IP: ip, Hostname: host, Link: link, Online: online,
-			RandomMAC: isRandomMAC(mac), LastSeen: now, GuessType: guessType(host, link), Signal: -50 - rand.Intn(25)}
+		d := &Device{MAC: mac, IP: ip, Hostname: host, Link: link, Online: online, Vendor: Vendor(mac),
+			RandomMAC: isRandomMAC(mac), LastSeen: now, GuessType: guessType(host, link), LeaseExpires: now + 30000}
+		if strings.HasPrefix(link, "wifi") {
+			d.Signal, d.Noise, d.SSID, d.WifiGen = -50-rand.Intn(25), -95, "Separ", 5
+			d.RxMbps, d.TxMbps, d.ConnectedSec = 390, 433.3, 5400
+			if link == "wifi24" {
+				d.SSID, d.WifiGen, d.RxMbps, d.TxMbps = "Separ", 4, 65, 72.2
+			}
+		}
+		if online {
+			d.OnlineSince = now - 5400
+		}
+		t.devs[mac] = d
 	}
-	add("8a:2f:11:42:9c:01", "192.168.1.238", "Galaxy-S23", "wifi5", true)
+	add("f0:d1:a9:42:9c:01", "192.168.1.238", "Galaxy-S23", "wifi5", true)
 	add("de:41:7a:0b:33:12", "192.168.1.123", "MacBook-Air", "wifi5", true)
 	add("62:b0:4c:91:aa:5e", "192.168.1.195", "iPhone", "wifi5", true)
 	add("00:1e:c2:7d:44:90", "192.168.1.202", "LG-webOS-TV", "lan", true)

@@ -22,6 +22,7 @@ import (
 	"separ/internal/luci"
 	"separ/internal/netinfo"
 	"separ/internal/proxy"
+	"separ/internal/sitelog"
 	"separ/internal/system"
 	"separ/internal/wifi"
 )
@@ -36,6 +37,7 @@ type Core struct {
 	Bloat     gaming.Bloat
 	LED       *led.Controller
 	Incidents *Incidents
+	Sites     *sitelog.Log
 	// PanelPorts are the ports the UI listens on (for the WAN lock).
 	PanelPorts []int
 
@@ -73,6 +75,7 @@ func New(store *config.Store, xrayBin string) *Core {
 	c.LED.Config = func() config.LED { return c.Store.Get().LED }
 	c.LED.Status = c.ledStatus
 	c.Devices.OnIPsChanged = c.RequestApply
+	c.Sites = sitelog.New(c.Devices.MACForIP)
 	lastFP := proxyFingerprint(store.Get())
 	var fpMu sync.Mutex
 	store.OnChange(func() {
@@ -208,6 +211,7 @@ const RestartMarker = "/tmp/separ-restarting"
 
 func (c *Core) Shutdown() {
 	c.Proxy.Stop()
+	c.Devices.SaveUsage()
 	if _, err := os.Stat(RestartMarker); err == nil {
 		os.Remove(RestartMarker)
 		return
@@ -385,6 +389,7 @@ func (c *Core) apply() {
 	}
 
 	dp := dnsctl.Plan{LogQueries: cfg.DNS.LogSites}
+	c.Sites.SetEnabled(cfg.DNS.LogSites)
 	if c.Proxy.UseTunnelDNS() {
 		dp.TunnelPort = proxy.DNSPort
 	} else if p := proxy.FindProvider(cfg.DNS.Provider); p != nil && len(p.Servers) > 0 {

@@ -151,7 +151,19 @@ export interface Device {
   priority: boolean;
   downKbps: number;
   upKbps: number;
+  vendor?: string;
+  ssid?: string;
+  wifiGen?: number;
+  rxMbps?: number;
+  txMbps?: number;
+  noise?: number;
+  connectedSec?: number;
+  onlineSince?: number;
+  leaseExpires?: number;
 }
+
+export interface Site { domain: string; count: number; first: number; last: number; devices?: number }
+export interface SitesResp { enabled: boolean; since: number; sites: Site[]; counts: Record<string, number> }
 
 export interface Schedule {
   id: string;
