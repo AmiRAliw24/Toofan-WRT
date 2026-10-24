@@ -134,6 +134,12 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	if len(secure) < 2 && !strings.HasPrefix(secure[0], "https://8.8.8.8") {
 		dnsServers = append(dnsServers, "https://8.8.8.8/dns-query")
 	}
+	// Last resort if DoH is blocked on the server's side: plain DNS, also
+	// through the tunnel (not in directDNS, so the dns-internal rule
+	// sends it to the proxy).
+	if !contains(directDNS, "1.1.1.1") {
+		dnsServers = append(dnsServers, "1.1.1.1")
+	}
 
 	var rules []any
 	rules = append(rules,

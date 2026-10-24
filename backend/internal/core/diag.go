@@ -58,6 +58,7 @@ func (c *Core) Diagnose() DiagReport {
 			{ID: "engine", Status: "ok"},
 			{ID: "tunnel", Status: "ok", Ms: 171},
 			{ID: "tunnel-dns", Status: "ok", Ms: 190},
+			{ID: "lan-dns", Status: "ok", Ms: 12, Detail: "142.250.185.68"},
 			{ID: "iran-direct", Status: "ok", Ms: 64, Detail: "185.143.233.120"},
 			{ID: "firewall", Status: "ok"},
 		}
@@ -141,6 +142,14 @@ func (c *Core) Diagnose() DiagReport {
 	step("tunnel-dns", off || !c.Proxy.UseTunnelDNS(), func() (string, error) {
 		_, err := resolveVia(net.JoinHostPort("127.0.0.1", "5353"), "www.google.com")
 		return "", err
+	})
+	// What devices actually use: the router's dnsmasq on port 53.
+	step("lan-dns", false, func() (string, error) {
+		ips, err := resolveVia(net.JoinHostPort("127.0.0.1", "53"), "www.google.com")
+		if err != nil {
+			return "", errString("the router's DNS does not answer: " + err.Error())
+		}
+		return ips[0], nil
 	})
 	// "Iranian sites direct": a typical Iranian site must resolve to an
 	// Iranian address (so it skips the tunnel) and open from the line.
