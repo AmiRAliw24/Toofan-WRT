@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 // SQM shapes the WAN slightly below line speed with CAKE so queues build
 // on the router (where CAKE keeps them short and fair) instead of in the
 // modem. Download shaping uses an IFB device fed from the WAN ingress.
 
-const ifb = "ifb-separ"
+const ifb = "ifb-toofanwrt"
 
 func SQMAvailable() bool {
 	if env.Mock {

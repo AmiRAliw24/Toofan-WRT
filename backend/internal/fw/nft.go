@@ -1,5 +1,5 @@
 // Package fw renders and applies the panel's own nftables table.
-// It lives next to fw4 (table inet separ) so firewall reloads don't touch it.
+// It lives next to fw4 (table inet toofanwrt) so firewall reloads don't touch it.
 package fw
 
 import (
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 	DirectMark = 0x100
 	// IranBlockMark tags LAN packets for Iranian IPs when they are blocked.
 	IranBlockMark = 0x200
-	Table         = "separ"
+	Table         = "toofanwrt"
 	ProxyMark     = 1
 	RouteTable    = 100
 )

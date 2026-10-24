@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 // BloatResult compares latency at rest with latency while the line is

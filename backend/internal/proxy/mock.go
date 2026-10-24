@@ -4,7 +4,7 @@ import (
 	"hash/fnv"
 	"math/rand"
 
-	"separ/internal/config"
+	"toofanwrt/internal/config"
 )
 
 func mockResults(servers []config.Server) []TestResult {

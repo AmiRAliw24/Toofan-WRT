@@ -3,7 +3,7 @@
 package update
 
 // End-to-end check of Apply + guard.sh on a throwaway machine (it writes
-// /usr/bin/separ, /etc/init.d/separ and /etc/separ). Run with:
+// /usr/bin/toofanwrt, /etc/init.d/toofanwrt and /etc/toofanwrt). Run with:
 //   OLD_BIN=... NEW_BIN=... go test -tags integration ./internal/update/
 
 import (
@@ -20,26 +20,26 @@ import (
 
 const fakeInit = `#!/bin/sh
 case "$1" in
-stop) [ -f /tmp/fake-separ.pid ] && kill $(cat /tmp/fake-separ.pid) 2>/dev/null; sleep 1 ;;
-start) setsid /usr/bin/separ -mock -listen 127.0.0.1:18080 -config /tmp/fake-separ.json >>/tmp/fake-separ.log 2>&1 & echo $! > /tmp/fake-separ.pid ;;
+stop) [ -f /tmp/fake-toofanwrt.pid ] && kill $(cat /tmp/fake-toofanwrt.pid) 2>/dev/null; sleep 1 ;;
+start) setsid /usr/bin/toofanwrt -mock -listen 127.0.0.1:18080 -config /tmp/fake-toofanwrt.json >>/tmp/fake-toofanwrt.log 2>&1 & echo $! > /tmp/fake-toofanwrt.pid ;;
 esac
 `
 
 const fakeInstall = `#!/bin/sh
 cd "$(dirname "$0")"
-/etc/init.d/separ stop
-cp bin/separ-amd64 /usr/bin/separ
-/etc/init.d/separ start
+/etc/init.d/toofanwrt stop
+cp bin/toofanwrt-amd64 /usr/bin/toofanwrt
+/etc/init.d/toofanwrt start
 `
 
 func release(t *testing.T, bin string) string {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "separ", "bin"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "toofanwrt", "bin"), 0o755)
 	b, _ := os.ReadFile(bin)
-	os.WriteFile(filepath.Join(dir, "separ", "bin", "separ-amd64"), b, 0o755)
-	os.WriteFile(filepath.Join(dir, "separ", "install.sh"), []byte(fakeInstall), 0o755)
+	os.WriteFile(filepath.Join(dir, "toofanwrt", "bin", "toofanwrt-amd64"), b, 0o755)
+	os.WriteFile(filepath.Join(dir, "toofanwrt", "install.sh"), []byte(fakeInstall), 0o755)
 	out := filepath.Join(t.TempDir(), "r.tar.gz")
-	if o, err := exec.Command("tar", "-czf", out, "-C", dir, "separ").CombinedOutput(); err != nil {
+	if o, err := exec.Command("tar", "-czf", out, "-C", dir, "toofanwrt").CombinedOutput(); err != nil {
 		t.Fatal(string(o))
 	}
 	return out
@@ -83,13 +83,13 @@ func TestUpdateAndRollback(t *testing.T) {
 	if oldBin == "" || newBin == "" {
 		t.Skip("OLD_BIN/NEW_BIN not set")
 	}
-	os.MkdirAll("/etc/separ", 0o700)
+	os.MkdirAll("/etc/toofanwrt", 0o700)
 	os.MkdirAll("/etc/init.d", 0o755)
-	os.WriteFile("/etc/init.d/separ", []byte(fakeInit), 0o755)
+	os.WriteFile("/etc/init.d/toofanwrt", []byte(fakeInit), 0o755)
 	b, _ := os.ReadFile(oldBin)
-	os.WriteFile("/usr/bin/separ", b, 0o755)
-	exec.Command("/etc/init.d/separ", "start").Run()
-	defer exec.Command("/etc/init.d/separ", "stop").Run()
+	os.WriteFile("/usr/bin/toofanwrt", b, 0o755)
+	exec.Command("/etc/init.d/toofanwrt", "start").Run()
+	defer exec.Command("/etc/init.d/toofanwrt", "stop").Run()
 	if !waitVersion("v-old", 10*time.Second) {
 		t.Fatal("old version did not start")
 	}

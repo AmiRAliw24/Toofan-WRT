@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
-const fileName = "separ.conf"
+const fileName = "toofanwrt.conf"
 
 type Plan struct {
 	TunnelPort int      // >0: forward everything to Xray's DNS inbound
@@ -26,7 +26,7 @@ type Plan struct {
 // such as no-resolv and log-queries may repeat; server= is a list.
 func render(p Plan) string {
 	var b strings.Builder
-	b.WriteString("# managed by separ - do not edit\n")
+	b.WriteString("# managed by toofanwrt - do not edit\n")
 	switch {
 	case p.TunnelPort > 0:
 		b.WriteString("no-resolv\n")

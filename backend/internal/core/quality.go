@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/proxy"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/proxy"
 )
 
 // Sample is one minute of line-quality measurements; -1 means failed.
@@ -32,7 +32,7 @@ var domesticTargets = []string{"www.aparat.com:443", "www.digikala.com:443", "di
 var foreignTargets = []string{"1.1.1.1:443", "8.8.8.8:443"}
 
 func NewQuality(c *Core) *Quality {
-	q := &Quality{c: c, path: "/etc/separ/quality.json"}
+	q := &Quality{c: c, path: "/etc/toofanwrt/quality.json"}
 	if env.Mock {
 		q.seedMock()
 	} else if b, err := os.ReadFile(q.path); err == nil {
@@ -76,7 +76,7 @@ func (q *Quality) save() {
 	q.mu.RLock()
 	b, _ := json.Marshal(q.samples)
 	q.mu.RUnlock()
-	os.MkdirAll("/etc/separ", 0o700)
+	os.MkdirAll("/etc/toofanwrt", 0o700)
 	os.WriteFile(q.path+".tmp", b, 0o600)
 	os.Rename(q.path+".tmp", q.path)
 }

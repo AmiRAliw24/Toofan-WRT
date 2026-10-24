@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"separ/internal/config"
+	"toofanwrt/internal/config"
 )
 
 // ParseLinks extracts every supported link from pasted text or a

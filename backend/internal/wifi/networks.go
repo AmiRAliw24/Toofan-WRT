@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/uci"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/uci"
 )
 
 // SSID is one access point network on the home LAN. Several can share a
@@ -83,9 +83,9 @@ func liveInfo(dev string) *Live {
 var (
 	mockNetMu sync.Mutex
 	mockNets  = []SSID{
-		{Section: "default_radio0", Radio: "radio0", Band: "2g", SSID: "Separ-Home", Encryption: "sae-mixed", Key: "supersecret123", Enabled: true, Primary: true, Netdev: "phy0-ap0", MFP: "1",
+		{Section: "default_radio0", Radio: "radio0", Band: "2g", SSID: "ToofanWrt-Home", Encryption: "sae-mixed", Key: "supersecret123", Enabled: true, Primary: true, Netdev: "phy0-ap0", MFP: "1",
 			Live: &Live{Channel: 6, Frequency: 2437, TxPower: 20, HTMode: "HT20", BSSID: "f4:f5:d8:10:20:30", Clients: 3, Up: true}},
-		{Section: "default_radio1", Radio: "radio1", Band: "5g", SSID: "Separ-Home-5G", Encryption: "sae-mixed", Key: "supersecret123", Enabled: true, Primary: true, Netdev: "phy1-ap0", MFP: "1", FastRoaming: true,
+		{Section: "default_radio1", Radio: "radio1", Band: "5g", SSID: "ToofanWrt-Home-5G", Encryption: "sae-mixed", Key: "supersecret123", Enabled: true, Primary: true, Netdev: "phy1-ap0", MFP: "1", FastRoaming: true,
 			Live: &Live{Channel: 36, Frequency: 5180, TxPower: 23, HTMode: "VHT80", BSSID: "f4:f5:d8:10:20:31", Clients: 2, Up: true}},
 	}
 )

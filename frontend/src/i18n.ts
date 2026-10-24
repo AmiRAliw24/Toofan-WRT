@@ -21,7 +21,7 @@ export function setLang(l: Lang) {
 export function applyDir() {
   document.documentElement.lang = lang.value;
   document.documentElement.dir = lang.value === 'fa' ? 'rtl' : 'ltr';
-  document.title = lang.value === 'fa' ? 'سپر · پنل روتر' : 'Separ · Router panel';
+  document.title = lang.value === 'fa' ? 'ToofanWrt · پنل روتر' : 'ToofanWrt · Router panel';
 }
 
 /** L picks the string for the current language. */

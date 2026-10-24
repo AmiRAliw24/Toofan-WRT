@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"separ/internal/api"
-	"separ/internal/config"
-	"separ/internal/core"
-	"separ/internal/env"
+	"toofanwrt/internal/api"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/core"
+	"toofanwrt/internal/env"
 )
 
 //go:embed all:web/dist
@@ -28,7 +28,7 @@ var version = "dev"
 
 func main() {
 	listen := flag.String("listen", ":8080", "HTTP listen addresses, comma separated")
-	cfgPath := flag.String("config", "/etc/separ/config.json", "config file")
+	cfgPath := flag.String("config", "/etc/toofanwrt/config.json", "config file")
 	xray := flag.String("xray", "/usr/bin/xray", "xray binary")
 	webDir := flag.String("web", "", "serve the UI from this directory instead of the embedded copy")
 	mock := flag.Bool("mock", false, "simulate a router (for development)")
@@ -41,7 +41,7 @@ func main() {
 
 	env.Mock = *mock
 	if env.Mock {
-		env.DataDir = os.TempDir() + "/separ-mock"
+		env.DataDir = os.TempDir() + "/toofanwrt-mock"
 	}
 	store, err := config.Open(*cfgPath)
 	if err != nil {
@@ -82,7 +82,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("separ %s listening on %s", version, *listen)
+	log.Printf("toofanwrt %s listening on %s", version, *listen)
 	h := srv.Handler()
 	// A busy port (e.g. LuCI still holding :80) must not take the panel
 	// down: keep retrying it while the other ports serve.

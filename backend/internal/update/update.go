@@ -20,12 +20,12 @@ import (
 	"syscall"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 const (
-	workDir    = "/tmp/separ-update"
-	resultFile = "/etc/separ/update-result.json"
+	workDir    = "/tmp/toofanwrt-update"
+	resultFile = "/etc/toofanwrt/update-result.json"
 )
 
 type Result struct {
@@ -94,13 +94,13 @@ func (u *Updater) Busy() bool {
 func archBin() string {
 	switch runtime.GOARCH {
 	case "arm":
-		return "separ-armv7"
+		return "toofanwrt-armv7"
 	case "arm64":
-		return "separ-arm64"
+		return "toofanwrt-arm64"
 	case "mipsle":
-		return "separ-mipsle"
+		return "toofanwrt-mipsle"
 	}
-	return "separ-amd64"
+	return "toofanwrt-amd64"
 }
 
 // Apply verifies a release tarball and hands installation to the guard.
@@ -115,7 +115,7 @@ func (u *Updater) Apply(tarball string) error {
 		u.set("installing", "", "mock")
 		return nil
 	}
-	dir := filepath.Join(workDir, "separ")
+	dir := filepath.Join(workDir, "toofanwrt")
 	os.RemoveAll(dir)
 	os.MkdirAll(workDir, 0o700)
 	_, err := env.Run(60*time.Second, "tar", "-xzf", tarball, "-C", workDir)
@@ -164,11 +164,11 @@ func (u *Updater) Apply(tarball string) error {
 const guardScript = `#!/bin/sh
 NEW="$1"; OLD="$2"; PORT="$3"; DIR="$4"
 sleep 1
-cp /usr/bin/separ /usr/bin/separ.prev
-touch /tmp/separ-restarting
-( cd "$DIR/separ" && SEPAR_UPDATE=1 sh install.sh )
+cp /usr/bin/toofanwrt /usr/bin/toofanwrt.prev
+touch /tmp/toofanwrt-restarting
+( cd "$DIR/toofanwrt" && TOOFAN_UPDATE=1 sh install.sh )
 # The new version may listen elsewhere (its installer can change the port).
-P="$(uci -q get separ.main.listen | cut -d, -f1 | sed 's/.*://')"
+P="$(uci -q get toofanwrt.main.listen | cut -d, -f1 | sed 's/.*://')"
 [ -n "$P" ] && PORT="$P"
 ok=0; i=0
 while [ $i -lt 45 ]; do
@@ -176,17 +176,17 @@ while [ $i -lt 45 ]; do
 	if wget -q -O - "http://127.0.0.1:$PORT/api/ping" 2>/dev/null | grep -q "\"version\":\"$NEW\""; then ok=1; break; fi
 done
 if [ $ok = 1 ]; then
-	echo "{\"ok\":true,\"from\":\"$OLD\",\"to\":\"$NEW\",\"at\":$(date +%s)}" > /etc/separ/update-result.json
+	echo "{\"ok\":true,\"from\":\"$OLD\",\"to\":\"$NEW\",\"at\":$(date +%s)}" > /etc/toofanwrt/update-result.json
 else
-	touch /tmp/separ-restarting
-	/etc/init.d/separ stop
+	touch /tmp/toofanwrt-restarting
+	/etc/init.d/toofanwrt stop
 	sleep 3
-	cp /usr/bin/separ.prev /usr/bin/separ.new && mv -f /usr/bin/separ.new /usr/bin/separ
-	/etc/init.d/separ start
-	echo "{\"ok\":false,\"from\":\"$OLD\",\"to\":\"$NEW\",\"error\":\"new version did not start; rolled back\",\"at\":$(date +%s)}" > /etc/separ/update-result.json
+	cp /usr/bin/toofanwrt.prev /usr/bin/toofanwrt.new && mv -f /usr/bin/toofanwrt.new /usr/bin/toofanwrt
+	/etc/init.d/toofanwrt start
+	echo "{\"ok\":false,\"from\":\"$OLD\",\"to\":\"$NEW\",\"error\":\"new version did not start; rolled back\",\"at\":$(date +%s)}" > /etc/toofanwrt/update-result.json
 fi
-cp "$DIR/update.log" /etc/separ/update.log 2>/dev/null
-rm -rf "$DIR/separ"
+cp "$DIR/update.log" /etc/toofanwrt/update.log 2>/dev/null
+rm -rf "$DIR/toofanwrt"
 `
 
 func (u *Updater) client(viaTunnel bool) *http.Client {

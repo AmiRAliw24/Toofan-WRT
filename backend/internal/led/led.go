@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/env"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/env"
 )
 
 // Status is what the LED reflects in automatic modes.

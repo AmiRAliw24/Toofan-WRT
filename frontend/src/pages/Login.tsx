@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { ShieldCheck } from 'lucide-preact';
+import { Tornado } from 'lucide-preact';
 import { authed, get, post } from '../api';
 import { L } from '../i18n';
 import { Btn, Card, Field, Password, toast } from '../ui';
@@ -27,9 +27,9 @@ export function Login() {
       <Card class="login">
         <form onSubmit={submit} class="stack">
           <div class="row" style="gap:14px">
-            <div class="brand-logo"><ShieldCheck size={22} /></div>
+            <div class="brand-logo"><Tornado size={22} /></div>
             <div>
-              <div class="brand-name">{L('سپر', 'Separ')}</div>
+              <div class="brand-name">ToofanWrt</div>
               <div class="brand-sub">{L('پنل مدیریت روتر', 'Router panel')}</div>
             </div>
           </div>

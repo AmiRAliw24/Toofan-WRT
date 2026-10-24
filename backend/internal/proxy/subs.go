@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/env"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/env"
 )
 
 // FetchSubscription downloads a subscription. It tries directly first and

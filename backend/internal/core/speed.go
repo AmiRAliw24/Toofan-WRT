@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
-	"separ/internal/proxy"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/proxy"
 )
 
 // SpeedServer is a test destination: Cloudflare's speed endpoints or an
@@ -65,7 +65,7 @@ type serverList struct {
 	servers []SpeedServer
 }
 
-const historyFile = "/etc/separ/speedtests.json"
+const historyFile = "/etc/toofanwrt/speedtests.json"
 
 func (s *SpeedTest) Get() SpeedResult {
 	s.mu.Lock()

@@ -11,20 +11,20 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/devices"
-	"separ/internal/dnsctl"
-	"separ/internal/env"
-	"separ/internal/fw"
-	"separ/internal/gaming"
-	"separ/internal/geo"
-	"separ/internal/led"
-	"separ/internal/luci"
-	"separ/internal/netinfo"
-	"separ/internal/proxy"
-	"separ/internal/sitelog"
-	"separ/internal/system"
-	"separ/internal/wifi"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/devices"
+	"toofanwrt/internal/dnsctl"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/fw"
+	"toofanwrt/internal/gaming"
+	"toofanwrt/internal/geo"
+	"toofanwrt/internal/led"
+	"toofanwrt/internal/luci"
+	"toofanwrt/internal/netinfo"
+	"toofanwrt/internal/proxy"
+	"toofanwrt/internal/sitelog"
+	"toofanwrt/internal/system"
+	"toofanwrt/internal/wifi"
 )
 
 type Core struct {
@@ -70,7 +70,7 @@ func New(store *config.Store, xrayBin string) *Core {
 	}
 	c.Proxy.Init()
 	c.Quality = NewQuality(c)
-	c.Incidents = NewIncidents("/etc/separ/incidents.json")
+	c.Incidents = NewIncidents("/etc/toofanwrt/incidents.json")
 	c.LED = led.New()
 	c.LED.Config = func() config.LED { return c.Store.Get().LED }
 	c.LED.Status = c.ledStatus
@@ -207,7 +207,7 @@ func (c *Core) applySQM(cfg *config.Config) {
 
 // RestartMarker exists while the updater restarts the panel; the firewall
 // and DNS are then left in place so traffic can't leak around the tunnel.
-const RestartMarker = "/tmp/separ-restarting"
+const RestartMarker = "/tmp/toofanwrt-restarting"
 
 func (c *Core) Shutdown() {
 	c.Proxy.Stop()

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/env"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/env"
 )
 
 // OpenVPN can't run inside Xray, so the tunnel is brought up as a tun
@@ -24,7 +24,7 @@ import (
 // becomes a freedom outbound bound to that device. Everything else
 // (capture, Iran split, DNS, kill switch, health checks) stays the same.
 
-const OVPNDev = "tun-separ"
+const OVPNDev = "tun-toofanwrt"
 
 var OpenVPNBin = "/usr/sbin/openvpn"
 

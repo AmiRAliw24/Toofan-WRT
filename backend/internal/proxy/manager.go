@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/env"
-	"separ/internal/geo"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/geo"
 )
 
 // Modes reported to the UI and used to decide firewall/DNS state.

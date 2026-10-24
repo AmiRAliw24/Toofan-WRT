@@ -3,15 +3,15 @@
 set -e
 cd "$(dirname "$0")"
 VERSION="${VERSION:-$(date +%Y.%m.%d)-$(git rev-parse --short HEAD 2>/dev/null || echo dev)}"
-OUT=dist/separ
+OUT=dist/toofanwrt
 rm -rf dist && mkdir -p "$OUT/bin"
 
 (cd frontend && npm ci --silent && npx tsc && npx vite build)
 
 LDFLAGS="-s -w -X main.version=$VERSION"
 cd backend
-CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/separ-armv7" .
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/separ-arm64" .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/toofanwrt-armv7" .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT/bin/toofanwrt-arm64" .
 cd ..
 
 cp -r openwrt/files openwrt/install.sh openwrt/uninstall.sh "$OUT/"
@@ -42,5 +42,5 @@ cp openwrt/pkgs/xray/xray-armv7 "$OUT/bin/xray-armv7"
 for list in openwrt/offline-*.list; do bundle "$list" .; done
 for list in openwrt/optional-*.list; do bundle "$list" optional; done
 
-tar -C dist -czf "dist/separ-$VERSION.tar.gz" separ
+tar -C dist -czf "dist/toofanwrt-$VERSION.tar.gz" toofanwrt
 ls -la dist

@@ -16,13 +16,13 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/config"
-	"separ/internal/core"
-	"separ/internal/devices"
-	"separ/internal/env"
-	"separ/internal/proxy"
-	"separ/internal/update"
-	"separ/internal/wifi"
+	"toofanwrt/internal/config"
+	"toofanwrt/internal/core"
+	"toofanwrt/internal/devices"
+	"toofanwrt/internal/env"
+	"toofanwrt/internal/proxy"
+	"toofanwrt/internal/update"
+	"toofanwrt/internal/wifi"
 )
 
 type Server struct {
@@ -271,7 +271,7 @@ func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotImplemented, "not available in demo mode")
 		return
 	}
-	tmp := "/tmp/separ-backup.tar.gz"
+	tmp := "/tmp/toofanwrt-backup.tar.gz"
 	if _, err := env.Run(60*time.Second, "sysupgrade", "-b", tmp); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

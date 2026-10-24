@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"separ/internal/env"
+	"toofanwrt/internal/env"
 )
 
 type Stats struct {
