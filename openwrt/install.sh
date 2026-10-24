@@ -36,9 +36,30 @@ say "OpenWrt $DISTRIB_RELEASE ($DISTRIB_TARGET), package manager: $PM"
 DEPS="xray-core v2ray-geoip v2ray-geosite-ir kmod-nft-tproxy ca-bundle"
 MISSING=""
 for p in $DEPS; do pm_has "$p" || MISSING="$MISSING $p"; done
+# Bundled packages first: they work even when downloads.openwrt.org is unreachable.
+if [ -n "$MISSING" ] && [ "$PM" = opkg ] && [ -d "pkgs/$DISTRIB_RELEASE" ]; then
+	say "installing bundled packages for $DISTRIB_RELEASE"
+	for p in $MISSING; do
+		f="$(ls "pkgs/$DISTRIB_RELEASE/${p}_"*.ipk 2>/dev/null | head -1)"
+		[ -n "$f" ] && LOCAL="$LOCAL $f"
+	done
+	# kmods first so xray's deps are all satisfied in one pass
+	# shellcheck disable=SC2086
+	[ -n "$LOCAL" ] && opkg install $(ls pkgs/$DISTRIB_RELEASE/kmod-nf-tproxy_*.ipk 2>/dev/null) $LOCAL || true
+	MISSING=""
+	for p in $DEPS; do pm_has "$p" || MISSING="$MISSING $p"; done
+fi
+
 if [ -n "$MISSING" ]; then
 	say "installing:$MISSING"
-	pm_update || die "package list update failed (is the router online?)"
+	if ! pm_update; then
+		echo
+		echo "  روتر به downloads.openwrt.org دسترسی ندارد. این‌ها را چک کنید:"
+		echo "    ping -c 3 8.8.8.8                 # اینترنت روتر"
+		echo "    nslookup downloads.openwrt.org    # DNS"
+		echo
+		die "package list update failed"
+	fi
 	# shellcheck disable=SC2086
 	pm_install $MISSING || die "could not install:$MISSING"
 fi
