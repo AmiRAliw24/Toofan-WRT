@@ -47,6 +47,7 @@ type Core struct {
 	exitInfo  netinfo.Info
 	exitFor   string
 	pending   chan struct{}
+	meter     speedMeter
 	iranCIDRs []string
 	lastErr   string
 }
@@ -100,6 +101,7 @@ func (c *Core) Start() {
 	go c.LED.Run()
 	go c.nightly()
 	go c.infoLoop()
+	go c.speedLoop()
 }
 
 // infoLoop keeps the line's and the tunnel's public IP/ISP fresh.
@@ -153,8 +155,10 @@ func (c *Core) ledStatus() led.Status {
 		grade = "mid"
 	}
 	q := c.Quality.Last()
+	mbps, _ := c.SpeedEstimate()
 	return led.Status{
-		WANUp: w.Up, ProxyMode: c.Proxy.Mode(), Split: c.Store.Get().Proxy.SplitIran,
+		SpeedMbps: mbps,
+		WANUp:     w.Up, ProxyMode: c.Proxy.Mode(), Split: c.Store.Get().Proxy.SplitIran,
 		ExtPingMs: q.Ext, SpeedTest: sp.Running, SpeedGrade: grade,
 	}
 }

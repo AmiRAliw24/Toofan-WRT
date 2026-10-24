@@ -121,10 +121,12 @@ func (s *Server) bloatStart(w http.ResponseWriter, r *http.Request) {
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 func (s *Server) ledGet(w http.ResponseWriter, r *http.Request) {
+	mbps, src := s.core.SpeedEstimate()
 	writeJSON(w, map[string]any{
 		"config":    s.core.Store.Get().LED,
 		"supported": s.core.LED.Supported(),
 		"current":   s.core.LED.Current(),
+		"speedMbps": mbps, "speedFrom": src,
 	})
 }
 
@@ -134,13 +136,14 @@ func (s *Server) ledSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch in.Mode {
-	case "auto", "color", "ping", "off", "default":
+	case "auto", "color", "ping", "speed", "off", "default":
 	default:
 		writeErr(w, http.StatusBadRequest, "invalid mode")
 		return
 	}
 	if !hexColor.MatchString(in.Color) || in.Brightness < 5 || in.Brightness > 100 ||
-		!hhmm.MatchString(in.NightFrom) || !hhmm.MatchString(in.NightTo) {
+		!hhmm.MatchString(in.NightFrom) || !hhmm.MatchString(in.NightTo) ||
+		in.SpeedGood < 0 || in.SpeedMid < 0 || in.SpeedGood > 10000 || (in.SpeedGood > 0 && in.SpeedMid >= in.SpeedGood) {
 		writeErr(w, http.StatusBadRequest, "invalid values")
 		return
 	}

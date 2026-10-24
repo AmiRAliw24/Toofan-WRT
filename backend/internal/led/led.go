@@ -22,7 +22,8 @@ type Status struct {
 	Split      bool
 	ExtPingMs  int // -1 unknown/failed
 	SpeedTest  bool
-	SpeedGrade string // ok | mid | bad, shown briefly after a test
+	SpeedGrade string  // ok | mid | bad, shown briefly after a test
+	SpeedMbps  float64 // estimated line speed, -1 unknown
 }
 
 type RGB struct{ R, G, B float64 } // 0..1
@@ -222,6 +223,26 @@ func (c *Controller) pick(cfg config.LED, st Status, now time.Time) (RGB, int) {
 		case st.ExtPingMs < 120:
 			return colCyan, 0
 		case st.ExtPingMs < 250:
+			return colYellow, 0
+		default:
+			return colRed, 0
+		}
+	case "speed":
+		good, mid := float64(cfg.SpeedGood), float64(cfg.SpeedMid)
+		if good <= 0 {
+			good = 20
+		}
+		if mid <= 0 || mid >= good {
+			mid = good / 4
+		}
+		switch {
+		case !st.WANUp:
+			return colRed, 1500
+		case st.SpeedMbps < 0:
+			return colCyan, 2500 // unknown until the first test or heavy use
+		case st.SpeedMbps >= good:
+			return colGreen, 0
+		case st.SpeedMbps >= mid:
 			return colYellow, 0
 		default:
 			return colRed, 0

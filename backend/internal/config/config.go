@@ -104,12 +104,14 @@ type DNS struct {
 }
 
 type LED struct {
-	Mode       string `json:"mode"` // auto | color | ping | off
+	Mode       string `json:"mode"` // auto | color | ping | speed | off | default
 	Color      string `json:"color"`
 	Brightness int    `json:"brightness"`
 	NightOff   bool   `json:"nightOff"`
 	NightFrom  string `json:"nightFrom"`
 	NightTo    string `json:"nightTo"`
+	SpeedGood  int    `json:"speedGood"` // Mbps: green from here (speed mode)
+	SpeedMid   int    `json:"speedMid"`  // Mbps: yellow from here, red below
 }
 
 type SQM struct {
@@ -148,7 +150,7 @@ func Default() *Config {
 		Devices: map[string]Device{},
 		DNS:     DNS{Provider: "isp", Mode: "udp"},
 		LockWAN: true,
-		LED:     LED{Mode: "auto", Color: "#00b894", Brightness: 60, NightFrom: "23:30", NightTo: "07:00"},
+		LED:     LED{Mode: "auto", Color: "#00b894", Brightness: 60, NightFrom: "23:30", NightTo: "07:00", SpeedGood: 20, SpeedMid: 5},
 	}
 }
 
