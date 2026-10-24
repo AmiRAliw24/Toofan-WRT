@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { EyeOff, Globe2, Info, Lock, ShieldBan } from 'lucide-preact';
+import { EyeOff, Globe2, Info, KeyRound, Lock, ShieldBan } from 'lucide-preact';
 import { post, usePoll } from '../api';
 import { onRefresh } from '../app';
 import { L, lang } from '../i18n';
@@ -7,7 +7,7 @@ import { Badge, Btn, Card, CardHead, Field, PageHead, Setting, Skeleton, Toggle,
 
 interface Provider { id: string; name: string; nameFa: string; servers: string[] | null; doh?: string; domestic: boolean }
 interface DnsCfg { provider: string; custom: string; mode: string; blockAds: boolean; logSites: boolean }
-interface DnsResp { config: DnsCfg; providers: Provider[]; tunnel: boolean; isp: string[] | null }
+interface DnsResp { config: DnsCfg; providers: Provider[]; tunnel: boolean; isp: string[] | null; lockWan: boolean }
 
 export function Dns() {
   const { data, reload } = usePoll<DnsResp>('/dns', 10000);
@@ -77,6 +77,15 @@ export function Dns() {
         <div class="card-body" style="padding-block:0">
           <Setting title={L('مسدودسازی تبلیغات', 'Block ads')} desc={L('تبلیغات و ردیاب‌های رایج سایت‌ها و برنامه‌های ایرانی مسدود می‌شوند (وقتی اینترنت آزاد روشن است)', 'Common ads and trackers on Iranian sites/apps are blocked (while the free internet is on)')}>
             <Toggle on={c.blockAds} onChange={(v) => save({ blockAds: v })} />
+          </Setting>
+        </div>
+      </Card>
+      <Card>
+        <CardHead icon={<KeyRound size={20} />} tone="warn" title={L('دسترسی', 'Access')} />
+        <div class="card-body" style="padding-block:0">
+          <Setting title={L('قفل پنل و SSH از سمت اینترنت', 'Lock panel and SSH from the internet')}
+            desc={L('اتصال به پنل، LuCI و SSH فقط از داخل شبکهٔ خانه ممکن است، حتی اگر کسی پورت را روی مودم باز کرده باشد', 'The panel, LuCI and SSH are reachable only from your home network, even if a port is forwarded on the modem')}>
+            <Toggle on={data.lockWan} onChange={async (v) => { await run(() => post('/security', { lockWan: v }), L('ذخیره شد', 'Saved')); reload(); }} />
           </Setting>
         </div>
       </Card>

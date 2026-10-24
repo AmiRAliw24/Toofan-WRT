@@ -47,6 +47,14 @@ func (q *Quality) Run() {
 	for {
 		<-t.C
 		s := q.measure()
+		q.c.Incidents.Observe("line", s.Dom >= 0 || s.Ext >= 0)
+		if s.Dom >= 0 {
+			q.c.Incidents.Observe("international", s.Ext >= 0)
+		}
+		if q.c.Store.Get().Proxy.Enabled {
+			m := q.c.Proxy.Mode()
+			q.c.Incidents.Observe("tunnel", m == proxy.ModeConnected || m == proxy.ModeConnecting)
+		}
 		q.mu.Lock()
 		q.samples = append(q.samples, s)
 		if len(q.samples) > maxSamples {
@@ -102,6 +110,16 @@ func bestConnect(targets []string) int {
 		}
 	}
 	return best
+}
+
+// Last returns the most recent sample.
+func (q *Quality) Last() Sample {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	if len(q.samples) == 0 {
+		return Sample{Ext: -1, Dom: -1}
+	}
+	return q.samples[len(q.samples)-1]
 }
 
 type QualityReport struct {

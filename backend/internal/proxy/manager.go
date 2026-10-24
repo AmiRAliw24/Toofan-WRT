@@ -75,6 +75,7 @@ type Manager struct {
 	tail      *tailBuffer
 	exited    chan struct{}
 	runningFP string
+	ovpn      *ovpnProc
 
 	lastPreferredTry time.Time
 	lastAutoBest     time.Time
@@ -184,8 +185,9 @@ func (m *Manager) Run() {
 
 func (m *Manager) reconcile(configChanged bool) {
 	cfg := m.Store.Get().Proxy
-	if !cfg.Enabled || cfg.Engine != "xray" {
+	if !cfg.Enabled {
 		m.stopProc()
+		m.stopOpenVPN()
 		m.mu.Lock()
 		m.activeID, m.fails, m.lastErr = "", 0, ""
 		m.mu.Unlock()
@@ -468,7 +470,9 @@ func (m *Manager) TestServers(ids []string) []TestResult {
 	res := m.tester.Test(list, m.isp())
 	byID := map[string]TestResult{}
 	for _, r := range res {
-		byID[r.ID] = r
+		if !r.Skipped {
+			byID[r.ID] = r
+		}
 	}
 	now := time.Now().Unix()
 	m.Store.UpdateQuiet(func(c *config.Config) {
@@ -505,6 +509,13 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	srv := findServer(cfg.Servers, id)
 	if srv == nil {
 		return errors.New("server not found")
+	}
+	if IsOpenVPN(*srv) {
+		if err := m.startOpenVPN(srv.ID); err != nil {
+			return err
+		}
+	} else {
+		m.stopOpenVPN()
 	}
 	full := m.Store.Get()
 	opts := BuildOpts{
@@ -607,16 +618,23 @@ func (m *Manager) stopProc() {
 }
 
 // Stop is called on shutdown.
-func (m *Manager) Stop() { m.stopProc() }
+func (m *Manager) Stop() {
+	m.stopProc()
+	m.stopOpenVPN()
+}
 
 // Logs returns the recent engine output.
 func (m *Manager) Logs() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.tail == nil {
-		return ""
+	out := ""
+	if m.tail != nil {
+		out = m.tail.String()
 	}
-	return m.tail.String()
+	if m.ovpn != nil && m.ovpn.tail != nil {
+		out += "\n--- openvpn ---\n" + m.ovpn.tail.String()
+	}
+	return out
 }
 
 func findServer(list []config.Server, id string) *config.Server {

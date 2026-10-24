@@ -77,6 +77,7 @@ type TestResult struct {
 	ID        string `json:"id"`
 	LatencyMs int    `json:"latencyMs"` // -1 failed
 	Error     string `json:"error,omitempty"`
+	Skipped   bool   `json:"skipped,omitempty"` // OpenVPN: only measured while active
 }
 
 // Tester measures many servers at once with one temporary Xray process.
@@ -85,7 +86,20 @@ type Tester struct {
 	mu      sync.Mutex
 }
 
-func (t *Tester) Test(servers []config.Server, isp []string) []TestResult {
+func (t *Tester) Test(all []config.Server, isp []string) []TestResult {
+	var servers []config.Server
+	var skipped []TestResult
+	for _, s := range all {
+		if IsOpenVPN(s) {
+			skipped = append(skipped, TestResult{ID: s.ID, Skipped: true})
+		} else {
+			servers = append(servers, s)
+		}
+	}
+	return append(t.test(servers, isp), skipped...)
+}
+
+func (t *Tester) test(servers []config.Server, isp []string) []TestResult {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	res := make([]TestResult, len(servers))

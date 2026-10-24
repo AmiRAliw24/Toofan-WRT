@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import qrcode from 'qrcode-generator';
-import { AlertTriangle, QrCode, Save, UserPlus, Wifi } from 'lucide-preact';
+import { AlertTriangle, QrCode, Radar, Save, SlidersHorizontal, Sparkles, UserPlus, Wifi } from 'lucide-preact';
 import { post, usePoll } from '../api';
 import { onRefresh } from '../app';
-import { L, digits, lang } from '../i18n';
-import { Badge, Btn, Card, CardHead, Field, Modal, PageHead, Password, Setting, Skeleton, Tabs, Toggle, confirmDialog, run } from '../ui';
+import { L, digits, lang, num } from '../i18n';
+import { Badge, Btn, Card, CardHead, Field, Modal, PageHead, Password, Setting, Skeleton, Tabs, Toggle, confirmDialog, run, toast } from '../ui';
 
 interface Band {
   band: '2g' | '5g';
@@ -21,7 +21,9 @@ interface Band {
   channels: number[] | null;
 }
 interface Guest { enabled: boolean; ssid: string; key: string; encryption: string; exists: boolean }
-interface WifiState { bands: Band[]; guest: Guest; country: string }
+interface WifiState { bands: Band[]; guest: Guest; country: string; smartWifi: boolean }
+interface ChannelScore { channel: number; aps: number; score: number }
+interface ScanResult { band: string; current: number; best: number; channels: ChannelScore[]; networks: number; changed: boolean }
 
 const encOptions = () => [
   { id: 'sae-mixed', label: L('WPA2/WPA3 (پیشنهادی)', 'WPA2/WPA3 (recommended)') },
@@ -159,7 +161,63 @@ function GuestForm({ g, onSaved }: { g: Guest; onSaved: () => void }) {
   );
 }
 
-type Tab = '2g' | '5g' | 'guest';
+function ScanBand({ band }: { band: '2g' | '5g' }) {
+  const [res, setRes] = useState<ScanResult | null>(null);
+  const [busy, setBusy] = useState<'' | 'scan' | 'apply'>('');
+  const scan = async (apply: boolean) => {
+    setBusy(apply ? 'apply' : 'scan');
+    const r = await run(() => post<ScanResult>('/wifi/scan', { band, apply }));
+    if (r) {
+      setRes(r);
+      if (apply) toast(r.changed ? L(`کانال به ${digits(r.best)} تغییر کرد`, `Channel changed to ${r.best}`) : L('کانال فعلی همین حالا مناسب است', 'The current channel is already fine'));
+    }
+    setBusy('');
+  };
+  const max = Math.max(1, ...(res?.channels || []).map((c) => c.score));
+  return (
+    <div class="stack" style="gap:10px">
+      <div class="row between wrap">
+        <b>{band === '5g' ? L('۵ گیگاهرتز', '5 GHz') : L('۲٫۴ گیگاهرتز', '2.4 GHz')}</b>
+        <div class="row" style="gap:6px">
+          <Btn sm busy={busy === 'scan'} onClick={() => scan(false)}><Radar size={15} />{L('بررسی هوا', 'Survey')}</Btn>
+          <Btn sm kind="primary" busy={busy === 'apply'} disabled={!res} onClick={() => scan(true)}><Sparkles size={15} />{L('انتخاب بهترین', 'Use best')}</Btn>
+        </div>
+      </div>
+      {res && (
+        <>
+          <div class="tiny faint">{L(`${num(res.networks)} شبکهٔ اطراف · کانال فعلی ${digits(res.current)} · پیشنهاد ${digits(res.best)}`, `${res.networks} nearby networks · current ${res.current} · best ${res.best}`)}</div>
+          {[...res.channels].sort((a, b) => a.channel - b.channel).map((c) => (
+            <div class="row" style="gap:10px">
+              <span class="mono" style="width:34px;text-align:end">{c.channel}</span>
+              <div class="meter grow" style="margin:0;height:10px">
+                <div style={{ width: Math.max(3, (c.score / max) * 100) + '%', background: c.channel === res.best ? 'var(--ok-dot)' : c.channel === res.current ? 'var(--primary)' : 'var(--border-strong)' }} />
+              </div>
+              <span class="tiny faint" style="width:70px">{L(`${num(c.aps)} شبکه`, `${c.aps} APs`)}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Advanced({ smart, reload, bands }: { smart: boolean; reload: () => void; bands: Band[] }) {
+  return (
+    <Card>
+      <CardHead icon={<Sparkles size={20} />} title={L('وای‌فای هوشمند', 'Smart Wi-Fi')}
+        sub={L('هوای اطراف را می‌سنجد و خلوت‌ترین کانال را انتخاب می‌کند؛ نام، رمز و نوع امنیت تغییر نمی‌کند', 'Surveys the air and picks the least crowded channel; name, password and security never change')} />
+      <div class="card-body stack">
+        <Setting title={L('بررسی خودکار شبانه', 'Automatic nightly check')} desc={L('هر شب ساعت ۴ صبح؛ فقط وقتی کانالی به‌وضوح بهتر باشد عوض می‌شود', 'Every night at 4 AM; only switches for a clearly better channel')}>
+          <Toggle on={smart} onChange={async (v) => { await run(() => post('/wifi/smart', { enabled: v }), L('ذخیره شد', 'Saved')); reload(); }} />
+        </Setting>
+        <div class="small muted">{L('هنگام بررسی دستی، وای‌فای ممکن است یکی دو ثانیه کند شود.', 'During a manual survey Wi-Fi may stall for a second or two.')}</div>
+        {bands.map((b) => <ScanBand band={b.band} />)}
+      </div>
+    </Card>
+  );
+}
+
+type Tab = '2g' | '5g' | 'guest' | 'adv';
 
 export function WifiPage() {
   const { data, reload } = usePoll<WifiState>('/wifi', 0);
@@ -174,11 +232,13 @@ export function WifiPage() {
         { id: '2g', label: L('۲٫۴ گیگاهرتز', '2.4 GHz'), icon: <Wifi size={17} /> },
         { id: '5g', label: L('۵ گیگاهرتز', '5 GHz'), icon: <Wifi size={17} /> },
         { id: 'guest', label: L('مهمان', 'Guest'), icon: <UserPlus size={17} /> },
+        { id: 'adv', label: L('پیشرفته', 'Advanced'), icon: <SlidersHorizontal size={17} /> },
       ]} />
       {!data && <Skeleton h={400} />}
-      {data && tab !== 'guest' && band && <BandForm key={band.band} b={band} onSaved={reload} />}
-      {data && tab !== 'guest' && !band && <Card pad>{L('این باند روی دستگاه پیدا نشد', 'This band was not found on the device')}</Card>}
+      {data && (tab === '2g' || tab === '5g') && band && <BandForm key={band.band} b={band} onSaved={reload} />}
+      {data && (tab === '2g' || tab === '5g') && !band && <Card pad>{L('این باند روی دستگاه پیدا نشد', 'This band was not found on the device')}</Card>}
       {data && tab === 'guest' && <GuestForm g={data.guest} onSaved={reload} />}
+      {data && tab === 'adv' && <Advanced smart={data.smartWifi} reload={reload} bands={data.bands} />}
     </div>
   );
 }

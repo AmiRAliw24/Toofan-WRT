@@ -44,6 +44,9 @@ type Plan struct {
 	Devices     []DeviceRule
 	Schedules   []ScheduleRule
 	PriorityIPs []string // marked with DSCP EF for queueing
+	LockWAN     bool     // drop panel/SSH/LuCI connections arriving from the WAN
+	WANDev      string
+	PanelPorts  []int
 }
 
 var privateNets = []string{
@@ -116,6 +119,16 @@ func Render(p Plan) string {
 		b.WriteString("\t}\n")
 	}
 
+	if p.LockWAN && p.WANDev != "" {
+		ports := []string{"22", "80", "443"}
+		for _, pt := range p.PanelPorts {
+			ports = append(ports, fmt.Sprint(pt))
+		}
+		b.WriteString("\tchain wan_lock {\n\t\ttype filter hook input priority filter - 5; policy accept;\n")
+		fmt.Fprintf(&b, "\t\tiifname %q tcp dport { %s } drop\n", p.WANDev, strings.Join(dedupe(ports), ", "))
+		b.WriteString("\t}\n")
+	}
+
 	// Transparent proxy capture.
 	b.WriteString("\tchain proxy {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n")
 	if p.TProxy && len(p.LANIfaces) > 0 {
@@ -152,6 +165,18 @@ func Render(p Plan) string {
 	b.WriteString("\t}\n")
 	b.WriteString("}\n")
 	return b.String()
+}
+
+func dedupe(xs []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // scheduleRanges converts a block window to nft time matches, splitting

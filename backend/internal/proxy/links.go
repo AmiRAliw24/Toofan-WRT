@@ -19,6 +19,17 @@ import (
 // subscription body (plain or base64). Bad lines are reported, not fatal.
 func ParseLinks(text string) (servers []config.Server, bad []string) {
 	text = strings.TrimSpace(text)
+	if strings.Contains(text, "[Interface]") {
+		link, err := WGConfToLink(text, "")
+		if err != nil {
+			return nil, []string{"wireguard: " + err.Error()}
+		}
+		s, err := ParseLink(link)
+		if err != nil {
+			return nil, []string{"wireguard: " + err.Error()}
+		}
+		return []config.Server{s}, nil
+	}
 	if !strings.Contains(text, "://") {
 		if dec, err := decodeB64(text); err == nil {
 			text = string(dec)
@@ -106,6 +117,10 @@ func Outbound(link string) (*XOutbound, string, error) {
 		return parseTrojan(link)
 	case "ss":
 		return parseSS(link)
+	case "wireguard", "wg":
+		return parseWireGuard(link)
+	case "openvpn":
+		return openvpnOutbound(link)
 	}
 	return nil, "", fmt.Errorf("unsupported protocol %q", link[:i])
 }

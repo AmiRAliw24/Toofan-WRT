@@ -77,6 +77,9 @@ func TestXrayAcceptsConfigs(t *testing.T) {
 		}
 	}
 	servers, _ := ParseLinks(strings.Join(sampleLinks, "\n"))
+	wg, _ := ParseLinks(sampleWG)
+	_, ovpn, _ := ImportOpenVPN("remote vpn.example.com 1194\n<ca>\nx\n</ca>\n", "", "", "")
+	servers = append(servers, wg[0], ovpn)
 	for i, s := range servers {
 		for _, split := range []bool{true, false} {
 			data, err := BuildConfig(BuildOpts{Server: s, SplitIran: split, BlockAds: true, HaveIran: true,
@@ -93,4 +96,56 @@ func TestXrayAcceptsConfigs(t *testing.T) {
 	}
 	check("tester", data)
 	_ = config.Server{}
+}
+
+const sampleWG = `[Interface]
+PrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=
+Address = 172.16.0.2/32, 2606:4700:110:8a36::2/128
+DNS = 1.1.1.1
+MTU = 1280
+
+[Peer]
+PublicKey = bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = engage.cloudflareclient.com:2408
+PersistentKeepalive = 25
+`
+
+func TestWireGuardConf(t *testing.T) {
+	servers, bad := ParseLinks(sampleWG)
+	if len(servers) != 1 || len(bad) != 0 {
+		t.Fatalf("servers=%v bad=%v", servers, bad)
+	}
+	s := servers[0]
+	if s.Protocol != "wireguard" || s.Address != "engage.cloudflareclient.com" || s.Port != 2408 {
+		t.Fatalf("%+v", s)
+	}
+	ob, _, err := Outbound(s.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(ob)
+	for _, want := range []string{`"secretKey":"yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk="`, `"keepAlive":25`, `"mtu":1280`, `"172.16.0.2/32"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+}
+
+func TestOpenVPNImport(t *testing.T) {
+	conf := "client\ndev tun\nproto udp\nremote vpn.example.com 1194\nredirect-gateway def1\n<ca>\n-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n</ca>\n"
+	prof, srv, err := ImportOpenVPN(conf, "", "u", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Address != "vpn.example.com" || srv.Port != 1194 || prof.ID != srv.ID || !IsOpenVPN(srv) {
+		t.Fatalf("%+v %+v", prof, srv)
+	}
+	if strings.Contains(sanitizeOVPN(conf), "redirect-gateway") {
+		t.Fatal("redirect-gateway not removed")
+	}
+	ob, _, err := Outbound(srv.Link)
+	if err != nil || ob.Protocol != "freedom" {
+		t.Fatal(err, ob)
+	}
 }

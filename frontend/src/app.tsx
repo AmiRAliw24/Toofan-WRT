@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import {
   Bell, Globe, Home as HomeIcon, Languages, LogOut, Menu, Moon, RefreshCw, Settings, Shield,
-  ShieldCheck, Smartphone, Sun, Wifi, Lock,
+  ShieldCheck, Smartphone, Sun, Wifi, Lock, Gamepad2,
 } from 'lucide-preact';
 import { authed, get, post, type Overview } from './api';
 import { L, lang, setLang, num, ago } from './i18n';
@@ -14,14 +14,15 @@ import { Proxy } from './pages/Proxy';
 import { Devices } from './pages/Devices';
 import { WifiPage } from './pages/Wifi';
 import { Dns } from './pages/Dns';
+import { Gaming } from './pages/Gaming';
 import { System } from './pages/System';
 import { Login } from './pages/Login';
 
-export type Route = 'home' | 'internet' | 'proxy' | 'devices' | 'wifi' | 'dns' | 'system';
+export type Route = 'home' | 'internet' | 'proxy' | 'devices' | 'wifi' | 'gaming' | 'dns' | 'system';
 
 function readRoute(): Route {
   const r = location.hash.replace(/^#\/?/, '').split('?')[0] as Route;
-  return ['home', 'internet', 'proxy', 'devices', 'wifi', 'dns', 'system'].includes(r) ? r : 'home';
+  return ['home', 'internet', 'proxy', 'devices', 'wifi', 'gaming', 'dns', 'system'].includes(r) ? r : 'home';
 }
 
 export const route = signal<Route>(readRoute());
@@ -70,6 +71,7 @@ const navs: NavDef[] = [
   { id: 'proxy', icon: <Shield size={19} />, label: () => L('اینترنت آزاد', 'Free internet'), sub: () => L('سرورها، تفکیک ایران، محافظت', 'Servers, Iran split, protection') },
   { id: 'devices', icon: <Smartphone size={19} />, label: () => L('دستگاه‌ها', 'Devices'), sub: () => L('سرعت، محدودیت و زمان‌بندی', 'Speed, limits and schedules') },
   { id: 'wifi', icon: <Wifi size={19} />, label: () => L('وای‌فای', 'Wi-Fi'), sub: () => L('۲٫۴ و ۵ گیگاهرتز و مهمان', '2.4 / 5 GHz and guest') },
+  { id: 'gaming', icon: <Gamepad2 size={19} />, label: () => L('بازی و کیفیت اتصال', 'Gaming'), sub: () => L('NAT، UPnP، تأخیر و اولویت', 'NAT, UPnP, latency, priority') },
   { id: 'dns', icon: <Lock size={19} />, label: () => L('DNS و امنیت', 'DNS & security'), sub: () => L('DNS امن و ضدتبلیغ', 'Secure DNS, ad blocking') },
   { id: 'system', icon: <Settings size={19} />, label: () => L('سیستم', 'System'), sub: () => L('سخت‌افزار، پشتیبان و رمز', 'Hardware, backup, password') },
 ];
@@ -166,6 +168,7 @@ export function App() {
     proxy: <Proxy />,
     devices: <Devices />,
     wifi: <WifiPage />,
+    gaming: <Gaming />,
     dns: <Dns />,
     system: <System />,
   }[r];

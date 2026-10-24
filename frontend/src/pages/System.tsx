@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { Cpu, Download, HardDrive, KeyRound, MemoryStick, Power, Router, Thermometer } from 'lucide-preact';
 import { post, usePoll, type SystemStats, type WAN } from '../api';
 import { L, bytes, duration, lang, num, pct } from '../i18n';
+import { LedCard } from './Led';
 import { Btn, Card, CardHead, Field, Meter, PageHead, Password, Skeleton, confirmDialog, run, toast } from '../ui';
 
 interface SysResp { system: SystemStats; wan: WAN; version: string }
@@ -11,7 +12,7 @@ function Res(p: { icon: any; label: string; used: number; total: string; value: 
     <Card class="stat">
       <div class="stat-label">{p.icon}{p.label}</div>
       <div class="stat-value">{pct(p.value)}</div>
-      <div class="stat-sub">{p.total}</div>
+      <div class="stat-sub"><span class="ltr">{p.total}</span></div>
       <Meter value={p.value} color={p.value > 85 ? 'var(--danger-strong)' : undefined} />
     </Card>
   );
@@ -83,6 +84,7 @@ export function System() {
           </div>
         </Card>
       </div>
+      <LedCard />
     </div>
   );
 }
