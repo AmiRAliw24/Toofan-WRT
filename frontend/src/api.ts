@@ -109,7 +109,10 @@ export interface ProxyStatus {
   since: number;
   events: ProxyEvent[];
   testing: boolean;
+  pending?: string[]; // servers whose test result is still due
 }
+
+export type IranMode = 'direct' | 'tunnel' | 'block';
 
 export interface ProxyConfig {
   enabled: boolean;
@@ -119,6 +122,7 @@ export interface ProxyConfig {
   activeId: string;
   preferredId: string;
   splitIran: boolean;
+  iranMode: IranMode;
   killSwitch: boolean;
   blockIPv6: boolean;
   guestProxy: boolean;
@@ -202,6 +206,7 @@ export interface Overview {
   wan: WAN;
   proxy: ProxyStatus;
   split: boolean;
+  iranMode?: IranMode;
   devices: { total: number; online: number };
   top: Device[];
   quality: { ext: number; dom: number };

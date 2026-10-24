@@ -48,11 +48,34 @@ func TestNftSyntax(t *testing.T) {
 	if os.Getenv("NFT_CHECK") == "" {
 		t.Skip("set NFT_CHECK=1 to validate with nft -c")
 	}
-	for _, p := range []Plan{samplePlan(), {}, {LANIfaces: []string{"br-lan"}}} {
+	blocked := samplePlan()
+	blocked.IranBlock = true
+	blockedOff := blocked
+	blockedOff.TProxy = false
+	for _, p := range []Plan{samplePlan(), blocked, blockedOff, {}, {LANIfaces: []string{"br-lan"}}} {
 		cmd := exec.Command("nft", "-c", "-f", "-")
 		cmd.Stdin = strings.NewReader(Render(p) + RenderBridge(p))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("nft rejected: %v\n%s\n%s", err, out, Render(p))
 		}
+	}
+}
+
+func TestRenderIranBlock(t *testing.T) {
+	p := samplePlan()
+	p.IranBlock = true
+	p.TProxy = false // still refused while the tunnel is down
+	s := Render(p)
+	for _, want := range []string{
+		"ip daddr @iran4 meta mark set meta mark | 0x200 return",
+		"meta mark & 0x200 == 0x200 meta l4proto tcp reject with tcp reset",
+		"ether saddr @bypass_mac return",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "tproxy ip") {
+		t.Error("no capture while the tunnel is down")
 	}
 }

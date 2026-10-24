@@ -4,11 +4,20 @@ import {
   Globe, KeyRound, Power, RotateCw, Router, Server as ServerIcon, Shield, ShieldAlert, ShieldCheck,
   ShieldOff, Smartphone, Stethoscope, Users, Zap,
 } from 'lucide-preact';
-import { post, type Overview, type ProxyStatus } from '../api';
+import { post, type IranMode, type Overview, type ProxyStatus } from '../api';
 import { go, overview } from '../app';
 import { L, duration, lang, num, pct, rate } from '../i18n';
 import { Badge, Card, CardHead, Meter, Skeleton, confirmDialog, run, Btn } from '../ui';
 import { DeviceRow } from './Devices';
+
+export function iranModeText(m: IranMode | undefined) {
+  switch (m) {
+    case 'tunnel': return L('سایت‌های ایرانی از تونل', 'Iranian sites via tunnel');
+    case 'block': return L('سایت‌های ایرانی مسدود', 'Iranian sites blocked');
+    default: return L('سایت‌های ایرانی مستقیم', 'Iranian sites direct');
+  }
+}
+
 
 export function modeInfo(p: ProxyStatus, wanUp: boolean) {
   const name = p.server?.name || '';
@@ -79,7 +88,7 @@ function Hero({ o }: { o: Overview }) {
             {L('ترافیک جهانی از ', 'Global traffic goes through ')}
             <bdi style="font-weight:700">{m.server}</bdi>
             {L(' عبور می‌کند', '')}
-            {o.split ? L(' • سایت‌های ایرانی مستقیم', ' • Iranian sites direct') : ''}
+            {' • ' + iranModeText(o.iranMode || (o.split ? 'direct' : 'tunnel'))}
           </>
         )
       : o.proxy.lastError && o.proxy.mode !== 'off'

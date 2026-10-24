@@ -3,7 +3,7 @@ import {
   Check, FileUp, Gauge, Link2, ListChecks, Plus, Power, RefreshCw, ScrollText, Server as ServerIcon, ShieldCheck,
   ShieldHalf, Split, Star, Trash2, Wand2, Zap, Globe2, Users, Timer, Ban,
 } from 'lucide-preact';
-import { del, get, post, usePoll, type ProxyConfig, type ProxyStatus, type Server } from '../api';
+import { del, get, post, usePoll, type IranMode, type ProxyConfig, type ProxyStatus, type Server } from '../api';
 import { onRefresh, overview } from '../app';
 import { L, ago, lang, num } from '../i18n';
 import { Badge, Btn, Card, CardHead, Empty, Field, PageHead, Password, Seg, Setting, Skeleton, Tabs, Toggle, confirmDialog, latClass, run, toast } from '../ui';
@@ -240,16 +240,30 @@ function ServerList({ d, reload, setData }: { d: ProxyResp; reload: () => void; 
   const active = d.status.activeId || d.config.activeId;
   const pref = d.config.preferredId;
 
+  // The router measures in the background and stores each result as soon
+  // as it arrives; poll quickly so every latency shows up right away.
   const testAll = async (ids?: string[]) => {
-    const set = new Set(ids || servers.map((s) => s.id));
-    setTesting(set);
+    let waiting = new Set(ids || servers.filter((s) => s.protocol !== 'openvpn').map((s) => s.id));
+    setTesting(waiting);
     try {
       await post('/proxy/test', ids ? { ids } : {});
     } catch (e: any) {
       toast(e.message, true);
+      setTesting(new Set());
+      return;
+    }
+    const until = Date.now() + 60000;
+    while (waiting.size > 0 && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 450));
+      try {
+        const nd = await get<ProxyResp>('/proxy');
+        const pending = new Set(nd.status.pending || []);
+        waiting = new Set([...waiting].filter((id) => pending.has(id)));
+        setData(nd);
+        setTesting(waiting);
+      } catch {}
     }
     setTesting(new Set());
-    reload();
   };
 
   const select = async (id: string) => {
@@ -338,6 +352,56 @@ function ServerList({ d, reload, setData }: { d: ProxyResp; reload: () => void; 
   );
 }
 
+function IranCard({ c, reload }: { c: ProxyConfig; reload: () => void }) {
+  const [mode, setMode] = useState<IranMode>(c.iranMode || (c.splitIran ? 'direct' : 'tunnel'));
+  useEffect(() => setMode(c.iranMode || (c.splitIran ? 'direct' : 'tunnel')), [c.iranMode]);
+  const choose = async (m: IranMode) => {
+    if (m === mode) return;
+    if (m === 'block' && !(await confirmDialog(L('با این کار سایت‌ها و برنامه‌های ایرانی (بانک، پیام‌رسان‌ها، فروشگاه‌ها) روی دستگاه‌هایی که از تونل استفاده می‌کنند باز نمی‌شوند. ادامه می‌دهید؟', 'Iranian sites and apps (banks, messengers, shops) will stop opening on devices that use the tunnel. Continue?'), true))) return;
+    const prev = mode;
+    setMode(m);
+    try {
+      await post('/proxy/settings', { iranMode: m });
+      toast(L('ذخیره شد', 'Saved'));
+    } catch (e: any) {
+      setMode(prev);
+      toast(e.message, true);
+    }
+    reload();
+  };
+  const opts: { id: IranMode; icon: any; title: string; desc: string }[] = [
+    { id: 'direct', icon: <Zap size={18} />, title: L('مستقیم', 'Direct'),
+      desc: L('بدون تونل؛ سریع‌تر و بدون مصرف حجم سرور. پیشنهادی', 'Skip the tunnel: faster, no server quota used. Recommended') },
+    { id: 'tunnel', icon: <ShieldCheck size={18} />, title: L('از تونل', 'Tunnel'),
+      desc: L('مثل بقیهٔ سایت‌ها از سرور رد می‌شوند', 'Go through the server like every other site') },
+    { id: 'block', icon: <Ban size={18} />, title: L('مسدود', 'Block'),
+      desc: L('اصلاً باز نمی‌شوند', 'Not reachable at all') },
+  ];
+  return (
+    <Card>
+      <CardHead icon={<Split size={20} />} tone="violet" title={L('ترافیک ایران', 'Iranian traffic')}
+        sub={L('سایت‌ها و برنامه‌های ایرانی چطور باز شوند؟', 'How should Iranian sites and apps be reached?')} />
+      <div class="card-body stack">
+        <div class="choice-grid" role="radiogroup" aria-label={L('ترافیک ایران', 'Iranian traffic')}>
+          {opts.map((o) => (
+            <button key={o.id} role="radio" aria-checked={mode === o.id}
+              class={'choice' + (mode === o.id ? ' active' : '') + (o.id === 'block' ? ' danger' : '')}
+              onClick={() => choose(o.id)}>
+              <span class="choice-icon">{o.icon}</span>
+              <span class="choice-title">{o.title}</span>
+              <span class="choice-desc">{o.desc}</span>
+            </button>
+          ))}
+        </div>
+        <div class="tiny faint">
+          {L('بیش از ۲۰۰۰ محدودهٔ IP ایران در خود هستهٔ روتر شناسایی می‌شوند، به‌علاوهٔ دامنه‌های ‎.ir و فهرست سایت‌های ایرانی. دستگاه‌ها و شبکه‌های «مستقیم» تحت تأثیر این گزینه نیستند.',
+            '2000+ Iranian IP ranges are matched in the router kernel, plus .ir domains and the Iranian site list. Devices and networks set to “direct” are not affected.')}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function Protection({ d, reload }: { d: ProxyResp; reload: () => void }) {
   const c = d.config;
   const set = async (k: keyof ProxyConfig, v: boolean) => {
@@ -346,16 +410,7 @@ function Protection({ d, reload }: { d: ProxyResp; reload: () => void }) {
   };
   return (
     <div class="stack">
-      <Card>
-        <CardHead icon={<Split size={20} />} tone="violet" title={L('تفکیک ترافیک ایران', 'Iran traffic split')}
-          sub={L('سایت‌ها و برنامه‌های ایرانی مستقیم می‌روند، نه از تونل؛ سریع‌تر و بدون هزینهٔ اضافهٔ حجم', 'Iranian sites go direct, not through the tunnel: faster and no wasted quota')} />
-        <div class="card-body" style="padding-block:0">
-          <Setting title={L('تفکیک فعال باشد', 'Enable split')}
-            desc={L('بیش از ۲۰۰۰ محدودهٔ IP ایران در خود هستهٔ روتر کنار گذاشته می‌شوند و دامنه‌های ایرانی هم شناسایی می‌شوند', '2000+ Iranian IP ranges bypass at kernel level, plus Iranian domains are detected')}>
-            <Toggle on={c.splitIran} onChange={(v) => set('splitIran', v)} />
-          </Setting>
-        </div>
-      </Card>
+      <IranCard c={c} reload={reload} />
       <Card>
         <CardHead icon={<ShieldHalf size={20} />} tone="danger" title={L('محافظت در برابر نشت', 'Leak protection')}
           sub={L('اگر تونل قطع شد، چه اتفاقی بیفتد', 'What happens when the tunnel goes down')} />

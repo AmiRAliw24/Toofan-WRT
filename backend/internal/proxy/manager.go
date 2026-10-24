@@ -49,6 +49,7 @@ type Status struct {
 	Since     int64          `json:"since"`
 	Events    []Event        `json:"events"`
 	Testing   bool           `json:"testing"`
+	Pending   []string       `json:"pending"`
 }
 
 type Manager struct {
@@ -69,7 +70,8 @@ type Manager struct {
 	lastErr   string
 	since     time.Time
 	events    []Event
-	testing   bool
+	testing   int
+	pending   map[string]bool // servers whose test result is still due
 	crashes   []time.Time
 
 	proc        *exec.Cmd
@@ -94,6 +96,7 @@ func (m *Manager) Init() {
 	}
 	m.mode = ModeOff
 	m.kick = make(chan struct{}, 1)
+	m.pending = map[string]bool{}
 }
 
 func (m *Manager) Mode() string {
@@ -128,7 +131,7 @@ func (m *Manager) Status() Status {
 	defer m.mu.Unlock()
 	st := Status{
 		Enabled: cfg.Proxy.Enabled, Mode: m.mode, ActiveID: m.activeID, LatencyMs: m.latency,
-		Fails: m.fails, LastError: m.lastErr, Testing: m.testing,
+		Fails: m.fails, LastError: m.lastErr, Testing: m.testing > 0, Pending: []string{},
 		Events: append(make([]Event, 0, len(m.events)), m.events...),
 	}
 	if !m.checkedAt.IsZero() {
@@ -141,6 +144,9 @@ func (m *Manager) Status() Status {
 		if s.ID == m.activeID {
 			s := s
 			st.Server = &s
+		}
+		if m.pending[s.ID] {
+			st.Pending = append(st.Pending, s.ID)
 		}
 	}
 	return st
@@ -461,38 +467,67 @@ func (m *Manager) TestAll() []TestResult {
 
 func (m *Manager) TestServers(ids []string) []TestResult {
 	cfg := m.Store.Get().Proxy
-	var list []config.Server
+	var pending []string
 	for _, s := range cfg.Servers {
-		if ids == nil || contains(ids, s.ID) {
-			list = append(list, s)
+		if (ids == nil || contains(ids, s.ID)) && !IsOpenVPN(s) {
+			pending = append(pending, s.ID)
 		}
 	}
 	m.mu.Lock()
-	m.testing = true
+	m.testing++
+	if m.pending == nil {
+		m.pending = map[string]bool{}
+	}
+	for _, id := range pending {
+		m.pending[id] = true
+	}
 	m.mu.Unlock()
 	defer func() {
 		m.mu.Lock()
-		m.testing = false
+		m.testing--
+		for _, id := range pending {
+			delete(m.pending, id)
+		}
 		m.mu.Unlock()
 	}()
-	res := m.tester.Test(list, m.isp())
-	byID := map[string]TestResult{}
-	for _, r := range res {
-		if !r.Skipped {
-			byID[r.ID] = r
-		}
-	}
-	now := time.Now().Unix()
-	m.Store.UpdateQuiet(func(c *config.Config) {
-		for i := range c.Proxy.Servers {
-			if r, ok := byID[c.Proxy.Servers[i].ID]; ok {
-				c.Proxy.Servers[i].LatencyMs = r.LatencyMs
-				c.Proxy.Servers[i].TestError = r.Error
-				c.Proxy.Servers[i].TestedAt = now
+	// Each result is stored the moment it arrives so the panel can show it.
+	return m.tester.Test(cfg.Servers, ids, m.isp(), func(r TestResult) {
+		now := time.Now().Unix()
+		m.Store.UpdateQuiet(func(c *config.Config) {
+			for i := range c.Proxy.Servers {
+				if c.Proxy.Servers[i].ID == r.ID {
+					c.Proxy.Servers[i].LatencyMs = r.LatencyMs
+					c.Proxy.Servers[i].TestError = r.Error
+					c.Proxy.Servers[i].TestedAt = now
+				}
+			}
+		})
+		m.mu.Lock()
+		delete(m.pending, r.ID)
+		m.mu.Unlock()
+	})
+}
+
+// StartTest runs TestServers in the background; results appear in the
+// server list one by one. It reports false when the same servers are
+// already being measured.
+func (m *Manager) StartTest(ids []string) bool {
+	m.mu.Lock()
+	busy := len(m.pending) > 0 && m.testing > 0
+	if busy && ids != nil {
+		busy = false
+		for _, id := range ids {
+			if m.pending[id] {
+				busy = true
 			}
 		}
-	})
-	return res
+	}
+	m.mu.Unlock()
+	if busy {
+		return false
+	}
+	go m.TestServers(ids)
+	return true
 }
 
 func (m *Manager) isp() []string {
@@ -532,7 +567,7 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	}
 	opts := BuildOpts{
 		Server:     *srv,
-		SplitIran:  cfg.SplitIran,
+		IranMode:   cfg.IranMode,
 		BlockAds:   full.DNS.BlockAds,
 		ISPDNS:     m.isp(),
 		SecureDNS:  SecureDNSFor(full.DNS),
@@ -651,7 +686,7 @@ func (m *Manager) lastOpts(srv config.Server) BuildOpts {
 	for _, s := range cfg.Proxy.Servers {
 		hosts = append(hosts, s.Address)
 	}
-	return BuildOpts{Server: srv, SplitIran: cfg.Proxy.SplitIran, BlockAds: cfg.DNS.BlockAds, ISPDNS: m.isp(),
+	return BuildOpts{Server: srv, IranMode: cfg.Proxy.IranMode, BlockAds: cfg.DNS.BlockAds, ISPDNS: m.isp(),
 		SecureDNS: SecureDNSFor(cfg.DNS), HaveIran: geo.FirstExisting(geo.IranDatPaths) != "",
 		KernelIran: m.KernelIran != nil && m.KernelIran(), AllHosts: hosts}
 }
@@ -684,6 +719,7 @@ func (m *Manager) stopProc() {
 
 // Stop is called on shutdown.
 func (m *Manager) Stop() {
+	m.tester.Stop()
 	m.stopProc()
 	m.stopOpenVPN()
 }
