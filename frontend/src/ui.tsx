@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Eye, EyeOff, X } from 'lucide-preact';
-import { L, num } from './i18n';
+import { L, lang, num } from './i18n';
 
 // ---- toasts ----
 interface Toast { id: number; text: string; error?: boolean }
@@ -275,43 +275,60 @@ export function latClass(ms: number) {
   return 'bad';
 }
 
-/** LineChart draws a small area chart; negative values are gaps (failures). */
-export function LineChart(p: { values: number[]; color?: string; height?: number; loading?: boolean }) {
-  const h = p.height || 110;
-  const w = 600;
-  const pts = p.values;
-  const { path, area, min, max, failX } = useMemo(() => {
-    const ok = pts.filter((v) => v >= 0);
-    const mn = ok.length ? Math.min(...ok) : 0;
-    const mx = ok.length ? Math.max(...ok) : 1;
+/** niceTicks returns 3 round values spanning [min, max]. */
+function niceTicks(min: number, max: number): number[] {
+  if (max <= min) max = min + 1;
+  const raw = (max - min) / 2;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
+  const lo = Math.floor(min / step) * step;
+  return [lo, lo + step, lo + 2 * step];
+}
+
+/**
+ * LineChart: a latency series over time. 2px line, faint area, recessive
+ * grid with three round ticks, emphasised last point, and a hover / touch
+ * crosshair with a tooltip. Negative values are failures, drawn as gaps
+ * with a red tick on the baseline.
+ */
+export function LineChart(p: { points: { t: number; v: number }[]; color?: string; height?: number; loading?: boolean; unit?: string }) {
+  const h = p.height || 130;
+  const w = 640;
+  const padL = 34;
+  const pts = p.points;
+  const [hover, setHover] = useState<number | null>(null);
+  const geo = useMemo(() => {
+    const ok = pts.filter((x) => x.v >= 0).map((x) => x.v);
+    const ticks = niceTicks(ok.length ? Math.min(...ok) : 0, ok.length ? Math.max(...ok) : 1);
+    const mn = ticks[0];
+    const mx = Math.max(ticks[2], ...ok);
     const span = Math.max(1, mx - mn);
-    const step = pts.length > 1 ? w / (pts.length - 1) : w;
+    const step = pts.length > 1 ? (w - padL) / (pts.length - 1) : 0;
+    const X = (i: number) => padL + i * step;
+    const Y = (v: number) => 6 + (1 - (v - mn) / span) * (h - 14);
     let d = '';
     let a = '';
-    let segStart = -1;
-    const fails: number[] = [];
-    pts.forEach((v, i) => {
-      const x = i * step;
-      if (v < 0) {
-        fails.push(x);
-        if (segStart >= 0) {
-          a += `L${(i - 1) * step},${h}Z`;
-          segStart = -1;
-        }
+    let open = false;
+    let last = -1;
+    pts.forEach((pt, i) => {
+      if (pt.v < 0) {
+        if (open) a += `L${X(last)},${h - 8}Z`;
+        open = false;
         return;
       }
-      const y = 8 + (1 - (v - mn) / span) * (h - 16);
-      if (segStart < 0) {
-        d += `M${x},${y}`;
-        a += `M${x},${h}L${x},${y}`;
-        segStart = i;
+      if (!open) {
+        d += `M${X(i)},${Y(pt.v)}`;
+        a += `M${X(i)},${h - 8}L${X(i)},${Y(pt.v)}`;
+        open = true;
       } else {
-        d += `L${x},${y}`;
-        a += `L${x},${y}`;
+        d += `L${X(i)},${Y(pt.v)}`;
+        a += `L${X(i)},${Y(pt.v)}`;
       }
+      last = i;
     });
-    if (segStart >= 0) a += `L${(pts.length - 1) * step},${h}Z`;
-    return { path: d, area: a, min: mn, max: mx, failX: fails };
+    if (open) a += `L${X(last)},${h - 8}Z`;
+    const fails = pts.map((pt, i) => (pt.v < 0 ? X(i) : -1)).filter((x) => x >= 0);
+    return { d, a, ticks, X, Y, fails, last, step };
   }, [pts, h]);
   const color = p.color || 'var(--chart-1)';
   if (pts.length === 0) {
@@ -322,18 +339,51 @@ export function LineChart(p: { values: number[]; color?: string; height?: number
       </div>
     );
   }
+  const onMove = (e: PointerEvent) => {
+    const el = e.currentTarget as SVGSVGElement;
+    const r = el.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * w;
+    const i = Math.round((x - padL) / Math.max(geo.step, 1e-6));
+    setHover(Math.max(0, Math.min(pts.length - 1, i)));
+  };
+  const hp = hover !== null ? pts[hover] : null;
+  const fmtTime = (t: number) => new Date(t * 1000).toLocaleString(lang.value === 'fa' ? 'fa-IR' : 'en-GB', { hour: '2-digit', minute: '2-digit', day: pts[pts.length - 1].t - pts[0].t > 86400 * 1.5 ? 'numeric' : undefined, month: pts[pts.length - 1].t - pts[0].t > 86400 * 1.5 ? 'short' : undefined });
+  const lastPt = geo.last >= 0 ? pts[geo.last] : null;
   return (
-    <div style="position:relative">
-      <svg class="chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ height: h + 'px' }} role="img">
-        <path d={area} fill={color} opacity="0.1" />
-        <path d={path} fill="none" stroke={color} stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" />
-        {failX.map((x) => (
-          <line x1={x} x2={x} y1={0} y2={h} stroke="var(--danger-strong)" stroke-width="1.5" opacity="0.5" vector-effect="non-scaling-stroke" />
+    <div class="chart-wrap">
+      <svg class="chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ height: h + 'px' }} role="img"
+        aria-label={lastPt ? `${num(lastPt.v)} ${p.unit || 'ms'}` : ''}
+        onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setHover(null)}>
+        {geo.ticks.map((t) => (
+          <g>
+            <line x1={padL} x2={w} y1={geo.Y(t)} y2={geo.Y(t)} stroke="var(--chart-grid)" stroke-width="1" vector-effect="non-scaling-stroke" />
+          </g>
         ))}
+        <path d={geo.a} fill={color} opacity="0.12" />
+        <path d={geo.d} fill="none" stroke={color} stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" />
+        {geo.fails.map((x) => (
+          <line x1={x} x2={x} y1={h - 8} y2={h} stroke="var(--danger-strong)" stroke-width="2" vector-effect="non-scaling-stroke" />
+        ))}
+        {hover !== null && (
+          <line x1={geo.X(hover)} x2={geo.X(hover)} y1={0} y2={h - 8} stroke="var(--text-3)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
+        )}
       </svg>
-      <div class="tiny faint row between ltr" style="margin-top:4px">
-        <span>{num(min)} ms</span>
-        <span>{num(max)} ms</span>
+      {/* y tick labels and endpoint dot are HTML so they don't stretch with the SVG */}
+      {geo.ticks.map((t) => (
+        <span class="tiny faint" style={{ position: 'absolute', left: '0', top: (geo.Y(t) / h) * 100 + '%', transform: 'translateY(-50%)', direction: 'ltr', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{num(t)}</span>
+      ))}
+      {lastPt && (
+        <span style={{ position: 'absolute', left: `calc(${(geo.X(geo.last) / w) * 100}% - 4px)`, top: `calc(${(geo.Y(lastPt.v) / h) * 100}% - 4px)`, width: '8px', height: '8px', borderRadius: '50%', background: color, boxShadow: '0 0 0 2px var(--bg-elev)' }} />
+      )}
+      {hp && (
+        <div class="chart-tip" style={{ left: `${(geo.X(hover!) / w) * 100}%` }}>
+          {hp.v >= 0 ? `${num(hp.v)} ${p.unit || 'ms'}` : L('بدون پاسخ', 'no response')} · {fmtTime(hp.t)}
+        </div>
+      )}
+      <div class="chart-axis" style={{ paddingLeft: padL / w * 100 + '%' }}>
+        <span>{fmtTime(pts[0].t)}</span>
+        <span>{fmtTime(pts[Math.floor(pts.length / 2)].t)}</span>
+        <span>{fmtTime(pts[pts.length - 1].t)}</span>
       </div>
     </div>
   );

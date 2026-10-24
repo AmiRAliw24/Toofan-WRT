@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
@@ -76,6 +77,10 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/speedtest", s.speedGet)
 	api.HandleFunc("POST /api/speedtest", s.speedStart)
 	api.HandleFunc("GET /api/speedtest/servers", s.speedServers)
+	api.HandleFunc("POST /api/speedtest/stop", func(w http.ResponseWriter, r *http.Request) {
+		s.core.Speed.Stop()
+		writeJSON(w, map[string]bool{"ok": true})
+	})
 	api.HandleFunc("GET /api/speedtest/history", s.speedHistory)
 
 	s.phase2Routes(api)
@@ -215,7 +220,9 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) system(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"system": s.core.Sampler.Stats(), "wan": s.core.Sampler.WAN(), "version": s.Version})
+	v := proxy.XrayVersion
+	writeJSON(w, map[string]any{"system": s.core.Sampler.Stats(), "wan": s.core.Sampler.WAN(), "version": s.Version,
+		"xray": fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2])})
 }
 
 func (s *Server) reboot(w http.ResponseWriter, r *http.Request) {

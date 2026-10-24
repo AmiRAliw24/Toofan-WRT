@@ -68,7 +68,7 @@ function Quality() {
         <div class="tiny faint" style="margin-bottom:8px">
           {overview.value?.proxy.mode === 'connected' ? L('از داخل تونل، با درخواست واقعی', 'Through the tunnel with a real request') : L('اتصال مستقیم', 'Direct connection')}
         </div>
-        <LineChart values={(data?.samples || []).map((s) => s.ext)} color="var(--chart-1)" loading={!data} />
+        <LineChart points={(data?.samples || []).map((s) => ({ t: s.t, v: s.ext }))} color="var(--chart-1)" loading={!data} />
       </Card>
       <Card class="chart-card">
         <div class="chart-head">
@@ -76,7 +76,7 @@ function Quality() {
           <div class="chart-val">{data && data.lastDom >= 0 ? `${num(data.lastDom)} ms` : '—'}</div>
         </div>
         <div class="tiny faint" style="margin-bottom:8px">{L('آپارات، دیجی‌کالا و دیوار', 'Aparat, Digikala and Divar')}</div>
-        <LineChart values={(data?.samples || []).map((s) => s.dom)} color="var(--chart-2)" loading={!data} />
+        <LineChart points={(data?.samples || []).map((s) => ({ t: s.t, v: s.dom }))} color="var(--chart-2)" loading={!data} />
       </Card>
       <div class="callout info small">
         <Activity size={18} />

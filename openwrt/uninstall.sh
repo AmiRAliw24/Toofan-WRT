@@ -19,6 +19,7 @@ if [ -x /etc/init.d/uhttpd ]; then
 	/etc/init.d/uhttpd enable
 	/etc/init.d/uhttpd restart
 fi
+rm -rf /usr/libexec/separ
 rm -f /usr/bin/separ /etc/init.d/separ /lib/upgrade/keep.d/separ /etc/hotplug.d/iface/99-separ /etc/config/separ
 echo "Separ removed; LuCI is back on http://$(uci -q get network.lan.ipaddr | cut -d/ -f1)"
 echo " Settings kept in /etc/separ (delete it with: rm -rf /etc/separ)"

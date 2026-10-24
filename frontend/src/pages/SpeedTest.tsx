@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Gauge as GaugeIcon, History, Play, RotateCcw, Search, Server, Shield, Timer, Waves, Wifi } from 'lucide-preact';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Gauge as GaugeIcon, History, Play, RotateCcw, Search, Server, Shield, Square, Timer, Waves, Wifi } from 'lucide-preact';
 import { get, post } from '../api';
 import { overview } from '../app';
 import { L, ago, lang, num } from '../i18n';
@@ -8,7 +8,7 @@ import { Badge, Btn, Card, CardHead, Gauge, Modal, Spinner, run, toast } from '.
 interface SpeedServer { id: string; kind: string; name: string; sponsor: string; country: string; countryCode: string; host?: string; url?: string; distanceKm?: number }
 interface SpeedResult {
   running: boolean;
-  phase: 'ping' | 'download' | 'upload' | 'done' | 'error' | '';
+  phase: 'ping' | 'download' | 'upload' | 'done' | 'error' | 'stopped' | '';
   via: string;
   server: SpeedServer;
   pingMs: number;
@@ -192,10 +192,16 @@ export function SpeedTest() {
               <>
                 <Gauge value={live} max={Math.max(50, Math.ceil((Math.max(r!.downMbps, r!.upMbps) * 1.25) / 10) * 10)}
                   label={phase === 'upload' ? L('آپلود', 'Upload') : L('دانلود', 'Download')} unit="Mbps" />
-                <div class="muted small">
+                <div class="muted small row" style="gap:12px;justify-content:center;flex-wrap:wrap">
                   {phase === 'ping' && L('اندازه‌گیری پینگ و جیتر…', 'Measuring ping and jitter…')}
                   {phase === 'download' && L('در حال دانلود…', 'Downloading…')}
                   {phase === 'upload' && L('در حال آپلود…', 'Uploading…')}
+                  {running && (
+                    <Btn sm kind="danger" onClick={async () => {
+                      await run(() => post('/speedtest/stop'));
+                      setR((x) => (x ? { ...x, running: false, phase: 'stopped' as any } : x));
+                    }}><Square size={14} fill="currentColor" />{L('توقف تست', 'Stop test')}</Btn>
+                  )}
                   {phase === 'done' && <Btn kind="primary" onClick={start}><RotateCcw size={17} />{L('دوباره', 'Again')}</Btn>}
                 </div>
               </>
@@ -205,6 +211,7 @@ export function SpeedTest() {
                 <span>{L('شروع', 'GO')}</span>
               </button>
             )}
+            {phase === 'stopped' && <div class="small muted">{L('تست متوقف شد.', 'Test stopped.')}</div>}
             {phase === 'error' && (
               <div class="callout danger small" style="margin-top:10px"><div>
                 <b>{L('تست انجام نشد', 'Test failed')}</b>
