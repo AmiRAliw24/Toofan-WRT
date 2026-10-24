@@ -128,6 +128,8 @@ type Config struct {
 	SmartWiFi bool              `json:"smartWifi"`
 	SQM       SQM               `json:"sqm"`
 	UpdateURL string            `json:"updateUrl"` // release manifest (JSON)
+	// WiFiRoutes: wifi-iface section -> "direct" for networks that bypass the tunnel.
+	WiFiRoutes map[string]string `json:"wifiRoutes"`
 }
 
 func Default() *Config {
@@ -255,5 +257,8 @@ func normalize(c *Config) {
 	}
 	if c.Schedules == nil {
 		c.Schedules = []Schedule{}
+	}
+	if c.WiFiRoutes == nil {
+		c.WiFiRoutes = map[string]string{}
 	}
 }

@@ -44,8 +44,12 @@ func NewQuality(c *Core) *Quality {
 func (q *Quality) Run() {
 	t := time.NewTicker(time.Minute)
 	saveEvery := 0
+	first := true
 	for {
-		<-t.C
+		if !first {
+			<-t.C
+		}
+		first = false
 		s := q.measure()
 		q.c.Incidents.Observe("line", s.Dom >= 0 || s.Ext >= 0)
 		if s.Dom >= 0 {

@@ -5,6 +5,7 @@ package core
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"separ/internal/geo"
 	"separ/internal/led"
 	"separ/internal/luci"
+	"separ/internal/netinfo"
 	"separ/internal/proxy"
 	"separ/internal/system"
 	"separ/internal/wifi"
@@ -37,8 +39,13 @@ type Core struct {
 	// PanelPorts are the ports the UI listens on (for the WAN lock).
 	PanelPorts []int
 
-	applyMu   sync.Mutex
-	sqmKey    string
+	applyMu sync.Mutex
+	sqmKey  string
+
+	infoMu    sync.Mutex
+	lineInfo  netinfo.Info
+	exitInfo  netinfo.Info
+	exitFor   string
 	pending   chan struct{}
 	iranCIDRs []string
 	lastErr   string
@@ -56,6 +63,7 @@ func New(store *config.Store, xrayBin string) *Core {
 		XrayBin:      xrayBin,
 		ISPDNS:       c.ispDNS,
 		OnModeChange: c.RequestApply,
+		KernelIran:   func() bool { return len(c.iranCIDRs) > 0 },
 	}
 	c.Proxy.Init()
 	c.Quality = NewQuality(c)
@@ -91,6 +99,47 @@ func (c *Core) Start() {
 	go c.guardLoop()
 	go c.LED.Run()
 	go c.nightly()
+	go c.infoLoop()
+}
+
+// infoLoop keeps the line's and the tunnel's public IP/ISP fresh.
+func (c *Core) infoLoop() {
+	lastWAN := ""
+	for {
+		w := c.Sampler.WAN()
+		c.infoMu.Lock()
+		line, exit, exitFor := c.lineInfo, c.exitInfo, c.exitFor
+		c.infoMu.Unlock()
+		now := time.Now().Unix()
+		if w.Up && (w.IP != lastWAN || now-line.At > 900 || (line.Error != "" && now-line.At > 60)) {
+			lastWAN = w.IP
+			li := netinfo.Lookup(0)
+			c.infoMu.Lock()
+			c.lineInfo = li
+			c.infoMu.Unlock()
+		}
+		st := c.Proxy.Status()
+		if st.Mode == proxy.ModeConnected {
+			if st.ActiveID != exitFor || now-exit.At > 600 || (exit.Error != "" && now-exit.At > 60) {
+				ei := netinfo.Lookup(proxy.SocksPort)
+				c.infoMu.Lock()
+				c.exitInfo, c.exitFor = ei, st.ActiveID
+				c.infoMu.Unlock()
+			}
+		} else if exitFor != "" {
+			c.infoMu.Lock()
+			c.exitInfo, c.exitFor = netinfo.Info{}, ""
+			c.infoMu.Unlock()
+		}
+		time.Sleep(20 * time.Second)
+	}
+}
+
+// PublicInfo returns the line's ISP/IP and the tunnel exit (if connected).
+func (c *Core) PublicInfo() (line, exit netinfo.Info) {
+	c.infoMu.Lock()
+	defer c.infoMu.Unlock()
+	return c.lineInfo, c.exitInfo
 }
 
 func (c *Core) ledStatus() led.Status {
@@ -217,15 +266,37 @@ func (c *Core) applyLoop() {
 	}
 }
 
-// guardLoop re-applies our table if something (a manual nft flush) removed it.
+// guardLoop re-applies our table if something (a manual nft flush) removed
+// it, and follows Wi-Fi interface renames after Wi-Fi reloads.
 func (c *Core) guardLoop() {
+	last := ""
 	for {
 		time.Sleep(30 * time.Second)
 		if !fw.Exists() {
 			env.Logf("nft table missing, restoring")
 			c.RequestApply()
 		}
+		if k := strings.Join(c.directNetdevs(c.Store.Get()), ","); k != last {
+			last = k
+			c.RequestApply()
+		}
 	}
+}
+
+// directNetdevs resolves "direct" Wi-Fi networks to their current devices.
+func (c *Core) directNetdevs(cfg *config.Config) []string {
+	if len(cfg.WiFiRoutes) == 0 {
+		return nil
+	}
+	devs := wifi.Netdevs()
+	var out []string
+	for sec, route := range cfg.WiFiRoutes {
+		if route == "direct" && devs[sec] != "" {
+			out = append(out, devs[sec])
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func lanIfaces(guest bool) (proxied, all []string) {
@@ -277,6 +348,7 @@ func (c *Core) apply() {
 	if cfg.Proxy.SplitIran {
 		plan.IranCIDRs = c.iranCIDRs
 	}
+	plan.DirectNetdevs = c.directNetdevs(cfg)
 	for mac, d := range cfg.Devices {
 		if d.Blocked {
 			plan.BlockMACs = append(plan.BlockMACs, mac)

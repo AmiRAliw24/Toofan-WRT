@@ -53,7 +53,14 @@ function NATCard({ nat, upnpOn }: { nat: NAT | null; upnpOn: boolean }) {
         {res && n && (
           <div class="stack" style="gap:10px">
             <div class="row wrap"><Badge tone={n.tone}>{n.label}</Badge><span class="small muted">{n.desc}</span></div>
-            {res.error && <div class="small" style="color:var(--danger-strong)">{res.error}</div>}
+            {res.error && (
+              <div class="callout warn small"><div>
+                <b>{res.error.includes('UDP') ? L('UDP مسدود است', 'UDP is blocked') : res.error.includes('DNS') ? L('مشکل DNS', 'DNS problem') : L('بررسی کامل نشد', 'Check incomplete')}</b>
+                {res.error.includes('UDP')
+                  ? L('اپراتور یا مودم ارسال UDP مستقیم را مسدود کرده است. بازی‌ها و تماس‌های صوتی که مستقیم وصل می‌شوند مشکل خواهند داشت؛ دستگاه بازی را روی «از تونل» نگه دارید یا با اپراتور تماس بگیرید.', 'The ISP or modem blocks direct UDP. Games and voice calls that connect directly will struggle; keep the console on the tunnel or contact your ISP.')
+                  : <span class="mono">{res.error}</span>}
+              </div></div>
+            )}
             <div class="kv"><span class="k">{L('IP عمومی', 'Public IP')}</span><span class="v mono">{res.publicIp || '—'}</span></div>
             <div class="kv"><span class="k">{L('IP روی WAN روتر', 'Router WAN IP')}</span><span class="v mono">{res.wanIp || '—'}</span></div>
             {res.doubleNat && (

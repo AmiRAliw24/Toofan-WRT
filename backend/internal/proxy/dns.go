@@ -1,6 +1,10 @@
 package proxy
 
-import "separ/internal/config"
+import (
+	"strings"
+
+	"separ/internal/config"
+)
 
 type DNSProvider struct {
 	ID      string   `json:"id"`
@@ -37,14 +41,16 @@ func FindProvider(id string) *DNSProvider {
 	return nil
 }
 
-// SecureDNSFor picks the resolver Xray queries through the tunnel.
+// SecureDNSFor picks the resolvers Xray queries through the tunnel.
 // Domestic providers make no sense inside the tunnel, so they fall back to Cloudflare.
-func SecureDNSFor(d config.DNS) string {
-	if d.Provider == "custom" && d.Custom != "" {
-		return d.Custom
+func SecureDNSFor(d config.DNS) []string {
+	if d.Provider == "custom" {
+		if list := strings.Fields(strings.ReplaceAll(d.Custom, ",", " ")); len(list) > 0 {
+			return list
+		}
 	}
 	if p := FindProvider(d.Provider); p != nil && !p.Domestic && p.DoH != "" {
-		return p.DoH
+		return []string{p.DoH}
 	}
-	return "https://1.1.1.1/dns-query"
+	return []string{"https://1.1.1.1/dns-query"}
 }

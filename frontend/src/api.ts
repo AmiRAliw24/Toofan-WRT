@@ -186,6 +186,17 @@ export interface WAN {
   uptimeSec: number;
 }
 
+export interface NetInfo {
+  ip: string;
+  isp: string;
+  ispFa?: string;
+  country: string;
+  countryCode: string;
+  city: string;
+  at: number;
+  error?: string;
+}
+
 export interface Overview {
   system: SystemStats;
   wan: WAN;
@@ -194,5 +205,7 @@ export interface Overview {
   devices: { total: number; online: number };
   top: Device[];
   quality: { ext: number; dom: number };
+  operator?: NetInfo;
+  exit?: NetInfo;
   fwError?: string;
 }

@@ -54,7 +54,8 @@ type Manager struct {
 	Store        *config.Store
 	XrayBin      string
 	ISPDNS       func() []string
-	OnModeChange func() // firewall + DNS follow the mode
+	OnModeChange func()      // firewall + DNS follow the mode
+	KernelIran   func() bool // Iranian IPs already bypass Xray in nftables
 
 	tester Tester
 
@@ -106,9 +107,11 @@ func (m *Manager) Capturing() bool {
 }
 
 // UseTunnelDNS reports whether dnsmasq should forward to Xray's DNS port.
+// Not while connecting: Xray isn't answering yet, and resolving the proxy
+// server's own name must keep working.
 func (m *Manager) UseTunnelDNS() bool {
 	switch m.Mode() {
-	case ModeConnecting, ModeConnected, ModeDegraded:
+	case ModeConnected, ModeDegraded:
 		return true
 	}
 	return false
@@ -519,12 +522,13 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	}
 	full := m.Store.Get()
 	opts := BuildOpts{
-		Server:    *srv,
-		SplitIran: cfg.SplitIran,
-		BlockAds:  full.DNS.BlockAds,
-		ISPDNS:    m.isp(),
-		SecureDNS: SecureDNSFor(full.DNS),
-		HaveIran:  geo.FirstExisting(geo.IranDatPaths) != "",
+		Server:     *srv,
+		SplitIran:  cfg.SplitIran,
+		BlockAds:   full.DNS.BlockAds,
+		ISPDNS:     m.isp(),
+		SecureDNS:  SecureDNSFor(full.DNS),
+		HaveIran:   geo.FirstExisting(geo.IranDatPaths) != "",
+		KernelIran: m.KernelIran != nil && m.KernelIran(),
 	}
 	data, err := BuildConfig(opts)
 	if err != nil {
@@ -555,9 +559,6 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return err
 	}
-	if out, err := env.Run(30*time.Second, m.XrayBin, "run", "-test", "-c", path); err != nil {
-		return fmt.Errorf("config rejected: %s", lastLine(out+"\n"+err.Error()))
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, m.XrayBin, "run", "-c", path)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET=/usr/share/xray")
@@ -573,22 +574,27 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	m.proc, m.cancel, m.tail, m.exited = cmd, cancel, tail, exited
 	m.mu.Unlock()
 
-	for i := 0; i < 50; i++ {
+	// Xray loads its rule files before opening ports; on a small router CPU
+	// that can take many seconds.
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
 		select {
 		case <-exited:
 			return fmt.Errorf("engine exited: %s", lastLine(tail.String()))
 		default:
 		}
-		if c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", SocksPort), 100*time.Millisecond); err == nil {
+		if c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", SocksPort), 200*time.Millisecond); err == nil {
 			c.Close()
 			if m.OnModeChange != nil {
 				m.OnModeChange()
 			}
 			return nil
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(250 * time.Millisecond)
 	}
-	return errors.New("engine did not open its ports")
+	msg := lastLine(tail.String())
+	m.stopProc()
+	return fmt.Errorf("engine did not open its ports in 45s: %s", msg)
 }
 
 func (m *Manager) procAlive() bool {

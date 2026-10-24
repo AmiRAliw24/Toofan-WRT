@@ -22,6 +22,7 @@ func samplePlan() Plan {
 		Schedules:   []ScheduleRule{{MACs: []string{"8a:2f:11:42:9c:01"}, Days: []int{0, 1, 2, 3, 4}, From: "23:00", To: "07:00"}},
 		PriorityIPs: []string{"192.168.1.140"},
 		LockWAN:     true, WANDev: "wan", PanelPorts: []int{8080, 80},
+		DirectNetdevs: []string{"phy1-ap1", "phy0-ap1"},
 	}
 }
 
@@ -49,7 +50,7 @@ func TestNftSyntax(t *testing.T) {
 	}
 	for _, p := range []Plan{samplePlan(), {}, {LANIfaces: []string{"br-lan"}}} {
 		cmd := exec.Command("nft", "-c", "-f", "-")
-		cmd.Stdin = strings.NewReader(Render(p))
+		cmd.Stdin = strings.NewReader(Render(p) + RenderBridge(p))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("nft rejected: %v\n%s\n%s", err, out, Render(p))
 		}

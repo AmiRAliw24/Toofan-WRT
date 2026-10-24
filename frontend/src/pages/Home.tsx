@@ -57,6 +57,11 @@ function Rate(p: { dir: 'down' | 'up'; bps: number }) {
   );
 }
 
+function flag(cc?: string) {
+  if (!cc || cc.length !== 2) return '';
+  return String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+}
+
 function maskIP(ip: string) {
   if (!ip) return '—';
   const p = ip.split('.');
@@ -95,7 +100,9 @@ function Hero({ o }: { o: Overview }) {
       </div>
       <div class="chain">
         <Hop icon={<Router size={18} />} title={L('مودم / خط', 'Modem / line')} sub={<span class="mono">{o.wan.gateway || '—'}</span>} state={o.wan.up ? 'ok' : 'bad'} />
-        <Hop icon={<ServerIcon size={18} />} title={L('اپراتور', 'Operator')} sub={<span class="mono">{maskIP(o.wan.ip)}</span>} state={o.wan.up ? 'ok' : 'bad'} />
+        <Hop icon={<ServerIcon size={18} />}
+          title={o.operator?.isp ? (lang.value === 'fa' && o.operator.ispFa ? o.operator.ispFa : o.operator.isp) : L('اپراتور', 'Operator')}
+          sub={<span class="mono">{o.operator?.ip || maskIP(o.wan.ip)}</span>} state={o.wan.up ? 'ok' : 'bad'} />
         <Hop
           icon={<Building2 size={18} />}
           title={L('شبکهٔ ملی (ایران)', 'Domestic network')}
@@ -107,7 +114,9 @@ function Hero({ o }: { o: Overview }) {
           title={L('اینترنت بین‌الملل', 'International')}
           sub={
             extOk
-              ? (o.proxy.mode === 'connected' ? L('از تونل · ', 'via tunnel · ') : '') + num(o.quality.ext) + 'ms'
+              ? (o.proxy.mode === 'connected'
+                  ? (o.exit?.ip ? `${flag(o.exit.countryCode)} ${o.exit.ip} · ` : L('از تونل · ', 'via tunnel · '))
+                  : '') + num(o.quality.ext) + 'ms'
               : L('بدون پاسخ', 'no response')
           }
           state={extOk ? 'ok' : o.wan.up ? 'bad' : 'off'}

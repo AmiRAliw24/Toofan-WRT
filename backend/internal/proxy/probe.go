@@ -141,10 +141,10 @@ func (t *Tester) test(servers []config.Server, isp []string) []TestResult {
 
 	// Wait until the first inbound accepts connections.
 	ready := false
-	for i := 0; i < 50 && !ready; i++ {
+	for i := 0; i < 120 && !ready; i++ { // up to ~20s on slow routers
 		for _, p := range ports {
 			if p > 0 {
-				if c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", p), 100*time.Millisecond); err == nil {
+				if c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", p), 150*time.Millisecond); err == nil {
 					c.Close()
 					ready = true
 				}

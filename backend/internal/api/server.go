@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -74,6 +75,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/quality", s.quality)
 	api.HandleFunc("GET /api/speedtest", s.speedGet)
 	api.HandleFunc("POST /api/speedtest", s.speedStart)
+	api.HandleFunc("GET /api/speedtest/servers", s.speedServers)
+	api.HandleFunc("GET /api/speedtest/history", s.speedHistory)
 
 	s.phase2Routes(api)
 	s.phase3Routes(api)
@@ -196,15 +199,18 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	q := s.core.Quality.Report(10 * time.Minute)
 	cfg := s.core.Store.Get()
+	line, exit := s.core.PublicInfo()
 	writeJSON(w, map[string]any{
-		"system":  s.core.Sampler.Stats(),
-		"wan":     s.core.Sampler.WAN(),
-		"proxy":   s.core.Proxy.Status(),
-		"split":   cfg.Proxy.SplitIran,
-		"devices": map[string]int{"total": len(devs), "online": online},
-		"top":     top,
-		"quality": map[string]any{"ext": q.LastExt, "dom": q.LastDom},
-		"fwError": s.core.LastError(),
+		"system":   s.core.Sampler.Stats(),
+		"wan":      s.core.Sampler.WAN(),
+		"proxy":    s.core.Proxy.Status(),
+		"split":    cfg.Proxy.SplitIran,
+		"devices":  map[string]int{"total": len(devs), "online": online},
+		"top":      top,
+		"quality":  map[string]any{"ext": q.LastExt, "dom": q.LastDom},
+		"operator": line,
+		"exit":     exit,
+		"fwError":  s.core.LastError(),
 	})
 }
 
@@ -710,7 +716,11 @@ func (s *Server) wifiSetBand(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	respond(w, wifi.SetBand(in))
+	err := wifi.SetBand(in)
+	if err == nil {
+		s.core.Reapply() // Wi-Fi device names may change after a reload
+	}
+	respond(w, err)
 }
 
 func (s *Server) wifiSetGuest(w http.ResponseWriter, r *http.Request) {
@@ -741,15 +751,34 @@ func (s *Server) speedGet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) speedStart(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Via string `json:"via"`
+		Via    string           `json:"via"`
+		Server core.SpeedServer `json:"server"`
 	}
 	decode(w, r, &in)
-	tunnel := in.Via != "direct" && s.core.Proxy.Mode() == proxy.ModeConnected
-	if !s.core.Speed.Start(tunnel) {
+	tunnel := in.Via == "tunnel" && s.core.Proxy.Mode() == proxy.ModeConnected
+	if in.Via == "tunnel" && !tunnel {
+		writeErr(w, http.StatusBadRequest, "the tunnel is not connected")
+		return
+	}
+	if !s.core.Speed.Start(tunnel, in.Server) {
 		writeErr(w, http.StatusConflict, "a test is already running")
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) speedServers(w http.ResponseWriter, r *http.Request) {
+	tunnel := r.URL.Query().Get("via") == "tunnel" && s.core.Proxy.Mode() == proxy.ModeConnected
+	list, err := s.core.Speed.Servers(tunnel, r.URL.Query().Get("q"))
+	resp := map[string]any{"servers": list}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	writeJSON(w, resp)
+}
+
+func (s *Server) speedHistory(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.core.Speed.History())
 }
 
 // ---- dns ----
@@ -773,6 +802,20 @@ func (s *Server) dnsSet(w http.ResponseWriter, r *http.Request) {
 	if in.Provider != "custom" && proxy.FindProvider(in.Provider) == nil {
 		writeErr(w, http.StatusBadRequest, "unknown provider")
 		return
+	}
+	if in.Provider == "custom" {
+		list := strings.Fields(strings.ReplaceAll(in.Custom, ",", " "))
+		if len(list) == 0 || len(list) > 2 {
+			writeErr(w, http.StatusBadRequest, "enter one or two DNS servers")
+			return
+		}
+		for _, d := range list {
+			if net.ParseIP(d) == nil && !strings.HasPrefix(d, "https://") {
+				writeErr(w, http.StatusBadRequest, "DNS must be an IP address or an https:// DoH URL")
+				return
+			}
+		}
+		in.Custom = strings.Join(list, " ")
 	}
 	respond(w, s.core.Store.Update(func(c *config.Config) error {
 		c.DNS = in

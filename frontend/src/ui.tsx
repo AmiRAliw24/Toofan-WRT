@@ -276,7 +276,7 @@ export function latClass(ms: number) {
 }
 
 /** LineChart draws a small area chart; negative values are gaps (failures). */
-export function LineChart(p: { values: number[]; color?: string; height?: number }) {
+export function LineChart(p: { values: number[]; color?: string; height?: number; loading?: boolean }) {
   const h = p.height || 110;
   const w = 600;
   const pts = p.values;
@@ -314,7 +314,14 @@ export function LineChart(p: { values: number[]; color?: string; height?: number
     return { path: d, area: a, min: mn, max: mx, failX: fails };
   }, [pts, h]);
   const color = p.color || 'var(--chart-1)';
-  if (pts.length === 0) return <div class="skeleton" style={{ height: h + 'px' }} />;
+  if (pts.length === 0) {
+    if (p.loading) return <div class="skeleton" style={{ height: h + 'px' }} />;
+    return (
+      <div class="empty small" style={{ height: h + 'px', padding: '0', display: 'grid', placeItems: 'center' }}>
+        {L('در حال جمع‌آوری داده؛ هر دقیقه یک نقطه اضافه می‌شود', 'Collecting data; a point is added every minute')}
+      </div>
+    );
+  }
   return (
     <div style="position:relative">
       <svg class="chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ height: h + 'px' }} role="img">

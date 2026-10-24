@@ -57,16 +57,30 @@ export function Dns() {
               <div class="provider-ips">{c.provider === 'custom' ? c.custom : '…'}</div>
             </button>
           </div>
-          {custom !== null && (
-            <div class="row" style="margin-top:14px;align-items:flex-end">
-              <div class="grow">
-                <Field label={L('آدرس DNS دلخواه', 'Custom DNS')} hint={L('IP (مثل 1.1.1.1) یا آدرس DoH (https://…/dns-query)', 'An IP (e.g. 1.1.1.1) or a DoH URL (https://…/dns-query)')}>
-                  <input class="input ltr" value={custom} onInput={(e) => setCustom((e.target as HTMLInputElement).value)} />
-                </Field>
+          {custom !== null && (() => {
+            const [p1, p2 = ''] = custom.split(/[\s,]+/);
+            const setPart = (i: number, v: string) => {
+              const parts = [p1 || '', p2 || ''];
+              parts[i] = v.trim();
+              setCustom(parts.join(' ').trim() === '' ? '' : parts.join(' '));
+            };
+            return (
+              <div class="stack" style="gap:10px;margin-top:14px">
+                <div class="grid g2" style="gap:12px">
+                  <Field label={L('DNS اصلی', 'Primary DNS')} hint={L('IP مثل 1.1.1.1 یا آدرس DoH', 'An IP like 1.1.1.1 or a DoH URL')}>
+                    <input class="input ltr" value={p1 || ''} placeholder="1.1.1.1" onInput={(e) => setPart(0, (e.target as HTMLInputElement).value)} />
+                  </Field>
+                  <Field label={L('DNS دوم (اختیاری)', 'Secondary DNS (optional)')}>
+                    <input class="input ltr" value={p2 || ''} placeholder="1.0.0.1" onInput={(e) => setPart(1, (e.target as HTMLInputElement).value)} />
+                  </Field>
+                </div>
+                <div class="row">
+                  <Btn kind="primary" disabled={!(p1 || '').trim()} onClick={async () => { await save({ provider: 'custom', custom: [p1, p2].filter(Boolean).join(' ') }); setCustom(null); }}>{L('ذخیره', 'Save')}</Btn>
+                  <Btn onClick={() => setCustom(null)}>{L('انصراف', 'Cancel')}</Btn>
+                </div>
               </div>
-              <Btn kind="primary" disabled={!custom.trim()} onClick={async () => { await save({ provider: 'custom', custom: custom.trim() }); setCustom(null); }}>{L('ذخیره', 'Save')}</Btn>
-            </div>
-          )}
+            );
+          })()}
           {chosen && !data.tunnel && chosen.domestic && chosen.id !== 'isp' && (
             <div class="tiny muted" style="margin-top:12px">{L('DNSهای ضدتحریم فقط تحریم سایت‌ها را دور می‌زنند، نه فیلترینگ را.', 'Anti-sanction DNS only bypasses sanctions, not censorship.')}</div>
           )}
