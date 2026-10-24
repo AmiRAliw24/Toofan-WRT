@@ -44,7 +44,7 @@ export function CardHead(p: {
   icon: ComponentChildren;
   title: ComponentChildren;
   sub?: ComponentChildren;
-  tone?: 'warn' | 'danger' | 'violet' | 'info';
+  tone?: 'ok' | 'warn' | 'danger' | 'violet' | 'info';
   action?: ComponentChildren;
 }) {
   return (

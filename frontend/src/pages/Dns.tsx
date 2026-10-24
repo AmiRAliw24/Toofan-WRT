@@ -98,7 +98,7 @@ export function Dns() {
         <CardHead icon={<KeyRound size={20} />} tone="warn" title={L('دسترسی', 'Access')} />
         <div class="card-body" style="padding-block:0">
           <Setting title={L('قفل پنل و SSH از سمت اینترنت', 'Lock panel and SSH from the internet')}
-            desc={L('اتصال به پنل، LuCI و SSH فقط از داخل شبکهٔ خانه ممکن است، حتی اگر کسی پورت را روی مودم باز کرده باشد', 'The panel, LuCI and SSH are reachable only from your home network, even if a port is forwarded on the modem')}>
+            desc={L('اتصال به پنل و SSH فقط از داخل شبکهٔ خانه ممکن است، حتی اگر کسی پورت را روی مودم باز کرده باشد', 'The panel and SSH are reachable only from your home network, even if a port is forwarded on the modem')}>
             <Toggle on={data.lockWan} onChange={async (v) => { await run(() => post('/security', { lockWan: v }), L('ذخیره شد', 'Saved')); reload(); }} />
           </Setting>
         </div>

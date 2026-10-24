@@ -115,13 +115,20 @@ func (u *Updater) Apply(tarball string) error {
 		u.set("installing", "", "mock")
 		return nil
 	}
-	os.RemoveAll(filepath.Join(workDir, "separ"))
+	dir := filepath.Join(workDir, "separ")
+	os.RemoveAll(dir)
 	os.MkdirAll(workDir, 0o700)
-	if _, err := env.Run(60*time.Second, "tar", "-xzf", tarball, "-C", workDir); err != nil {
+	_, err := env.Run(60*time.Second, "tar", "-xzf", tarball, "-C", workDir)
+	os.Remove(tarball)
+	// /tmp is RAM: never leave an extracted release behind on failure.
+	fail = func(err error) error {
+		os.RemoveAll(dir)
+		u.set("failed", err.Error(), "")
+		return err
+	}
+	if err != nil {
 		return fail(errors.New("not a valid release file"))
 	}
-	os.Remove(tarball)
-	dir := filepath.Join(workDir, "separ")
 	bin := filepath.Join(dir, "bin", archBin())
 	if _, err := os.Stat(filepath.Join(dir, "install.sh")); err != nil {
 		return fail(errors.New("release file has no install.sh"))

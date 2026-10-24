@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { ArchiveRestore, CheckCircle2, CloudDownload, Download, ExternalLink, FileJson, PackageOpen, RefreshCw, Upload, Wrench, XCircle } from 'lucide-preact';
+import { ArchiveRestore, CheckCircle2, CloudDownload, Download, ExternalLink, FileJson, PackageOpen, RefreshCw, Trash2, Upload, Wrench, XCircle } from 'lucide-preact';
 import { get, post } from '../api';
 import { L, ago } from '../i18n';
 import { Btn, Card, CardHead, Field, confirmDialog, run, toast } from '../ui';
@@ -214,24 +214,68 @@ export function BackupCard() {
   );
 }
 
-interface LuciStatus { installed: boolean; running: boolean; port: number }
+interface LuciStatus { installed: boolean; running: boolean; port: number; busy?: string; error?: string }
 
-/** LuciCard opens OpenWrt's own interface temporarily for rare settings. */
+/** LuciCard: OpenWrt's own interface. Separ removes it so there is only one
+ *  interface; it can be put back, or (while installed) opened temporarily. */
 export function LuciCard() {
   const [st, setSt] = useState<LuciStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { get<LuciStatus>('/luci').then(setSt).catch(() => {}); }, []);
-  if (!st || !st.installed) return null;
+  const load = () => get<LuciStatus>('/luci').then(setSt).catch(() => {});
+  useEffect(() => { load(); }, []);
+  // Removing or reinstalling runs on the router in the background.
+  useEffect(() => {
+    if (!st?.busy) return;
+    const t = setInterval(load, 1500);
+    return () => clearInterval(t);
+  }, [st?.busy]);
+  if (!st) return null;
   const url = `${location.protocol}//${location.hostname}:${st.port}/`;
+  const act = async (path: string) => {
+    setBusy(true);
+    const r = await run(() => post<LuciStatus>(path));
+    if (r) setSt(r);
+    setBusy(false);
+  };
+
+  if (st.busy) {
+    return (
+      <Card>
+        <CardHead icon={<Wrench size={20} />} title={L('رابط LuCI', 'LuCI interface')}
+          sub={st.busy === 'removing' ? L('در حال حذف LuCI…', 'Removing LuCI…') : L('در حال دانلود و نصب LuCI؛ ممکن است چند دقیقه طول بکشد…', 'Downloading and installing LuCI; this can take a few minutes…')}
+          action={<span class="spinner" />} />
+      </Card>
+    );
+  }
+
+  if (!st.installed) {
+    return (
+      <Card>
+        <CardHead icon={<CheckCircle2 size={20} />} tone="ok" title={L('رابط LuCI حذف شده است', 'LuCI is removed')}
+          sub={L('سپر تنها رابط مدیریت روتر است. اگر روزی لازم شد، LuCI را می‌توانید دوباره نصب کنید (به اینترنت نیاز دارد).', 'Separ is the router’s only interface. If you ever need it, LuCI can be installed again (needs internet).')} />
+        {st.error && <div class="card-body"><div class="callout danger small">{st.error}</div></div>}
+        <div class="card-foot">
+          <Btn busy={busy} onClick={async () => {
+            if (await confirmDialog(L('LuCI از اینترنت دانلود و نصب می‌شود ولی خاموش می‌ماند تا خودتان روشنش کنید. ادامه می‌دهید؟', 'LuCI will be downloaded and installed, but stays off until you turn it on. Continue?'))) act('/luci/install');
+          }}><CloudDownload size={17} />{L('نصب دوبارهٔ LuCI', 'Reinstall LuCI')}</Btn>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card>
-      <CardHead icon={<Wrench size={20} />} title={L('تنظیمات پیشرفتهٔ OpenWrt', 'Advanced OpenWrt settings')}
-        sub={L('سپر رابط اصلی روتر است. رابط LuCI فقط برای تنظیمات خیلی خاص و موقتاً روشن می‌شود و با ری‌استارت روتر خودکار خاموش می‌شود.', 'Separ is the router’s main interface. LuCI is switched on only for rare settings, temporarily; a reboot turns it off again.')}
+      <CardHead icon={<Wrench size={20} />} title={L('رابط LuCI', 'LuCI interface')}
+        sub={L('رابط پیش‌فرض OpenWrt هنوز روی روتر نصب است. سپر همهٔ کارها را انجام می‌دهد؛ می‌توانید LuCI را کامل حذف کنید تا فقط یک رابط بماند.', 'OpenWrt’s default interface is still installed. Separ does everything; remove LuCI so only one interface is left.')}
         action={<span class={'badge' + (st.running ? ' warn' : '')}>{st.running ? L('روشن', 'On') : L('خاموش', 'Off')}</span>} />
+      {st.error && <div class="card-body"><div class="callout danger small">{st.error}</div></div>}
       <div class="card-foot">
+        <Btn kind="danger" busy={busy} onClick={async () => {
+          if (await confirmDialog(L('LuCI به‌طور کامل از روتر حذف می‌شود و سپر تنها رابط مدیریت می‌ماند. هر وقت خواستید از همین‌جا دوباره نصبش کنید. ادامه می‌دهید؟', 'LuCI will be removed and Separ stays the only interface. You can reinstall it here any time. Continue?'), true)) act('/luci/remove');
+        }}><Trash2 size={17} />{L('حذف کامل LuCI', 'Remove LuCI completely')}</Btn>
         {st.running ? (
           <>
-            <a class="btn primary" href={url} target="_blank" rel="noopener"><ExternalLink size={17} />{L('باز کردن LuCI', 'Open LuCI')}</a>
+            <a class="btn" href={url} target="_blank" rel="noopener"><ExternalLink size={17} />{L('باز کردن LuCI', 'Open LuCI')}</a>
             <Btn busy={busy} onClick={async () => {
               setBusy(true);
               const r = await run(() => post<LuciStatus>('/luci', { enabled: false }), L('LuCI خاموش شد', 'LuCI turned off'));
@@ -248,7 +292,7 @@ export function LuciCard() {
               setSt(r);
               window.open(url, '_blank', 'noopener');
             }
-          }}><Wrench size={17} />{L('روشن کردن موقت LuCI', 'Turn on LuCI temporarily')}</Btn>
+          }}><Wrench size={17} />{L('روشن کردن موقت', 'Turn on temporarily')}</Btn>
         )}
       </div>
     </Card>

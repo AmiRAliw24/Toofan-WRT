@@ -69,7 +69,7 @@ export function System() {
         </Card>
         <Card>
           <CardHead icon={<KeyRound size={20} />} tone="warn" title={L('تغییر رمز روتر', 'Change router password')}
-            sub={L('رمز ورود به این پنل، LuCI و SSH با هم عوض می‌شود', 'Changes the password for this panel, LuCI and SSH together')} />
+            sub={L('رمز ورود به این پنل و SSH با هم عوض می‌شود', 'Changes the password for this panel and SSH together')} />
           <div class="card-body stack" style="gap:12px">
             <Field label={L('رمز فعلی', 'Current password')}><Password value={cur} onInput={setCur} autocomplete="current-password" /></Field>
             <Field label={L('رمز جدید', 'New password')} hint={L('حداقل ۸ کاراکتر', 'At least 8 characters')}><Password value={pw} onInput={setPw} /></Field>

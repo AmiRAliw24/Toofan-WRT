@@ -7,6 +7,13 @@ ip rule del fwmark 1 table 100 2>/dev/null
 ip route flush table 100 2>/dev/null
 for d in /tmp/dnsmasq.d /tmp/dnsmasq.*.d; do rm -f "$d/separ.conf"; done
 /etc/init.d/dnsmasq restart
+# Separ removed LuCI when it was installed; bring it back so the router keeps
+# a web interface (needs internet).
+if [ ! -x /etc/init.d/uhttpd ]; then
+	echo "reinstalling LuCI..."
+	opkg update >/dev/null 2>&1 && { opkg install luci || opkg install luci-light; } >/dev/null 2>&1 \
+		|| echo "LuCI could not be downloaded; the router is still reachable over SSH. Later run: opkg update && opkg install luci"
+fi
 # Give port 80 back to LuCI.
 if [ -x /etc/init.d/uhttpd ]; then
 	uci -q delete uhttpd.main.listen_http
