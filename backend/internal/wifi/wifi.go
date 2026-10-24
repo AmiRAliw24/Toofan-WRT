@@ -70,7 +70,7 @@ func Get() (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	st := State{}
+	st := State{Bands: []Band{}}
 	radios := map[string]*Band{}
 	var radioNames []string
 	for k, v := range m {

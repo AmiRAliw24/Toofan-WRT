@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -16,5 +18,16 @@ func TestOpenV1Config(t *testing.T) {
 	}
 	if !s.Get().Proxy.Enabled {
 		t.Fatal("lost settings")
+	}
+}
+
+func TestNoNullLists(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "missing.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(s.Get())
+	if strings.Contains(string(b), "null") {
+		t.Fatalf("null in %s", b)
 	}
 }

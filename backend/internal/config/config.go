@@ -47,7 +47,7 @@ type OpenVPNProfiles []OpenVPNProfile
 
 func (p *OpenVPNProfiles) UnmarshalJSON(b []byte) error {
 	if len(b) == 0 || b[0] != '[' {
-		*p = nil
+		*p = OpenVPNProfiles{}
 		return nil
 	}
 	var list []OpenVPNProfile
@@ -166,9 +166,7 @@ func Open(path string) (*Store, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	if s.cfg.Devices == nil {
-		s.cfg.Devices = map[string]Device{}
-	}
+	normalize(s.cfg)
 	return s, nil
 }
 
@@ -236,8 +234,26 @@ func clone(c *Config) *Config {
 	b, _ := json.Marshal(c)
 	out := &Config{}
 	_ = json.Unmarshal(b, out)
-	if out.Devices == nil {
-		out.Devices = map[string]Device{}
-	}
+	normalize(out)
 	return out
+}
+
+// normalize replaces nil lists with empty ones so the API never sends null
+// where the UI expects an array.
+func normalize(c *Config) {
+	if c.Devices == nil {
+		c.Devices = map[string]Device{}
+	}
+	if c.Proxy.Servers == nil {
+		c.Proxy.Servers = []Server{}
+	}
+	if c.Proxy.Subscriptions == nil {
+		c.Proxy.Subscriptions = []Subscription{}
+	}
+	if c.Proxy.OpenVPN == nil {
+		c.Proxy.OpenVPN = OpenVPNProfiles{}
+	}
+	if c.Schedules == nil {
+		c.Schedules = []Schedule{}
+	}
 }

@@ -224,7 +224,7 @@ export function WifiPage() {
   const [tab, setTab] = useState<Tab>('2g');
   lang.value;
   useEffect(() => onRefresh(reload), [reload]);
-  const band = data?.bands.find((b) => b.band === tab);
+  const band = (data?.bands || []).find((b) => b.band === tab);
   return (
     <div class="stack">
       <PageHead title={L('وای‌فای', 'Wi-Fi')} sub={L('نام، رمز و تنظیمات شبکه‌های بی‌سیم خانه', 'Names, passwords and settings of your wireless networks')} />
@@ -238,7 +238,7 @@ export function WifiPage() {
       {data && (tab === '2g' || tab === '5g') && band && <BandForm key={band.band} b={band} onSaved={reload} />}
       {data && (tab === '2g' || tab === '5g') && !band && <Card pad>{L('این باند روی دستگاه پیدا نشد', 'This band was not found on the device')}</Card>}
       {data && tab === 'guest' && <GuestForm g={data.guest} onSaved={reload} />}
-      {data && tab === 'adv' && <Advanced smart={data.smartWifi} reload={reload} bands={data.bands} />}
+      {data && tab === 'adv' && <Advanced smart={data.smartWifi} reload={reload} bands={data.bands || []} />}
     </div>
   );
 }

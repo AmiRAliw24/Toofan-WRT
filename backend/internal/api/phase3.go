@@ -16,6 +16,7 @@ import (
 	"separ/internal/netcfg"
 	"separ/internal/proxy"
 	"separ/internal/update"
+	"separ/internal/wifi"
 )
 
 func (s *Server) phase3Routes(api *http.ServeMux) {
@@ -33,6 +34,10 @@ func (s *Server) phase3Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/network/wan", s.netWAN)
 	api.HandleFunc("POST /api/network/lan", s.netLAN)
 	api.HandleFunc("POST /api/network/system", s.netSystem)
+	api.HandleFunc("GET /api/network/uplink", s.uplinkGet)
+	api.HandleFunc("POST /api/network/uplink/scan", s.uplinkScan)
+	api.HandleFunc("POST /api/network/uplink", s.uplinkConnect)
+	api.HandleFunc("POST /api/network/uplink/disconnect", s.uplinkDisconnect)
 }
 
 func (s *Server) updater() *update.Updater {
@@ -239,4 +244,37 @@ func (s *Server) netSystem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, netcfg.SetSystem(in))
+}
+
+func (s *Server) uplinkGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, wifi.UplinkStatus())
+}
+
+func (s *Server) uplinkScan(w http.ResponseWriter, r *http.Request) {
+	nets, err := wifi.ScanNetworks()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, nets)
+}
+
+func (s *Server) uplinkConnect(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		wifi.Network
+		Key string `json:"key"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := wifi.ConnectUplink(in.Network, in.Key); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.core.Reapply()
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) uplinkDisconnect(w http.ResponseWriter, r *http.Request) {
+	respond(w, wifi.DisconnectUplink())
 }

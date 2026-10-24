@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Activity, ArrowDown, ArrowUp, CheckCircle2, CircleSlash, Flag, Gauge as GaugeIcon, Globe, History, LineChart as LineIcon, Play, Settings2, Stethoscope, Timer, Waypoints, XCircle } from 'lucide-preact';
 import { get, post, usePoll } from '../api';
-import { WanCard } from './Network';
+import { UplinkCard, WanCard } from './Network';
 import { onRefresh, overview } from '../app';
 import { L, ago, clock, lang, num, pct } from '../i18n';
 import { Badge, Btn, Card, CardHead, Gauge, LineChart, PageHead, Seg, Skeleton, Tabs, run } from '../ui';
@@ -240,7 +240,7 @@ export function Internet() {
         { id: 'diag', label: L('عیب‌یابی', 'Diagnose'), icon: <Stethoscope size={17} /> },
         { id: 'setup', label: L('تنظیم اتصال', 'Connection setup'), icon: <Settings2 size={17} /> },
       ]} />
-      {tab === 'quality' ? <Quality /> : tab === 'speed' ? <SpeedTest /> : tab === 'diag' ? <Diagnostics /> : <WanCard />}
+      {tab === 'quality' ? <Quality /> : tab === 'speed' ? <SpeedTest /> : tab === 'diag' ? <Diagnostics /> : <div class="stack"><WanCard /><UplinkCard /></div>}
     </div>
   );
 }

@@ -161,15 +161,25 @@ type ifaceStatus struct {
 	DNS []string `json:"dns-server"`
 }
 
-// WANStatus reads the logical "wan" interface from netifd.
+// WANStatus reads the active uplink from netifd: the WAN cable, or the
+// Wi-Fi uplink ("wwan") when the cable isn't connected.
 func WANStatus() (ifaceStatus, error) {
-	var st ifaceStatus
-	out, err := env.Ubus("network.interface.wan", "status", "")
-	if err != nil {
-		return st, err
+	var first ifaceStatus
+	var firstErr error
+	for i, name := range []string{"wan", "wwan"} {
+		var st ifaceStatus
+		out, err := env.Ubus("network.interface."+name, "status", "")
+		if err == nil {
+			err = json.Unmarshal([]byte(out), &st)
+		}
+		if i == 0 {
+			first, firstErr = st, err
+		}
+		if err == nil && st.Up {
+			return st, nil
+		}
 	}
-	err = json.Unmarshal([]byte(out), &st)
-	return st, err
+	return first, firstErr
 }
 
 func readWAN() WAN {
