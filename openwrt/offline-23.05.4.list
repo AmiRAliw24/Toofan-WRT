@@ -1,0 +1,8 @@
+# Packages bundled for offline install on OpenWrt 23.05.4 (ipq40xx/chromium, arm_cortex-a7_neon-vfpv4).
+# Used when the router can't reach downloads.openwrt.org.
+packages/arm_cortex-a7_neon-vfpv4/packages/xray-core_24.12.31-1_arm_cortex-a7_neon-vfpv4.ipk
+packages/arm_cortex-a7_neon-vfpv4/packages/v2ray-geoip_202506050146-1_all.ipk
+packages/arm_cortex-a7_neon-vfpv4/packages/v2ray-geosite-ir_202506300044-1_all.ipk
+packages/arm_cortex-a7_neon-vfpv4/base/ca-bundle_20241223-1_all.ipk
+targets/ipq40xx/chromium/packages/kmod-nf-tproxy_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk
+targets/ipq40xx/chromium/packages/kmod-nft-tproxy_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk

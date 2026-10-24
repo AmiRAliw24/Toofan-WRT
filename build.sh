@@ -17,5 +17,17 @@ CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -trimpath -ldfl
 cd ..
 
 cp -r openwrt/files openwrt/install.sh openwrt/uninstall.sh "$OUT/"
+
+# Offline package bundles, for routers that can't reach downloads.openwrt.org.
+for list in openwrt/offline-*.list; do
+	rel="${list#openwrt/offline-}"; rel="${rel%.list}"
+	mkdir -p "$OUT/pkgs/$rel"
+	grep -v '^#' "$list" | while read -r path; do
+		[ -n "$path" ] || continue
+		f="openwrt/pkgs/$rel/$(basename "$path")"
+		[ -f "$f" ] || { mkdir -p "openwrt/pkgs/$rel"; curl -fsSL -o "$f" "https://downloads.openwrt.org/releases/$rel/$path"; }
+		cp "$f" "$OUT/pkgs/$rel/"
+	done
+done
 tar -C dist -czf "dist/separ-$VERSION.tar.gz" separ
 ls -la dist
