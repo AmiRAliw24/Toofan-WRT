@@ -207,6 +207,11 @@ fi
 
 # /tmp lives in RAM: drop the release files once installed (the panel's own
 # updater cleans up after itself).
+# Installed by the old (Separ) panel: its updater only removes the "separ"
+# link, so free the extracted release once it has finished.
+if [ -n "$SEPAR_UPDATE" ]; then
+	( sleep 150; rm -rf /tmp/separ-update ) </dev/null >/dev/null 2>&1 &
+fi
 if [ -z "$TOOFAN_UPDATE" ] && [ -z "$SEPAR_UPDATE" ]; then
 	HERE="$(pwd)"
 	case "$HERE" in /tmp/*) cd / && rm -rf "$HERE" ;; esac

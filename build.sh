@@ -42,5 +42,10 @@ cp openwrt/pkgs/xray/xray-armv7 "$OUT/bin/xray-armv7"
 for list in openwrt/offline-*.list; do bundle "$list" .; done
 for list in openwrt/optional-*.list; do bundle "$list" optional; done
 
-tar -C dist -czf "dist/toofanwrt-$VERSION.tar.gz" toofanwrt
+# Routers still running the panel under its old name (Separ) look for a
+# "separ" folder and bin/separ-<arch>; links let them install this release.
+ln -s toofanwrt dist/separ
+for b in "$OUT"/bin/toofanwrt-*; do ln -s "$(basename "$b")" "$OUT/bin/separ-${b##*-}"; done
+
+tar -C dist -czf "dist/toofanwrt-$VERSION.tar.gz" toofanwrt separ
 ls -la dist
