@@ -160,6 +160,9 @@ sleep 1
 cp /usr/bin/separ /usr/bin/separ.prev
 touch /tmp/separ-restarting
 ( cd "$DIR/separ" && SEPAR_UPDATE=1 sh install.sh )
+# The new version may listen elsewhere (its installer can change the port).
+P="$(uci -q get separ.main.listen | cut -d, -f1 | sed 's/.*://')"
+[ -n "$P" ] && PORT="$P"
 ok=0; i=0
 while [ $i -lt 45 ]; do
 	sleep 2; i=$((i+1))

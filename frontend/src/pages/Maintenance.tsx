@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { ArchiveRestore, CheckCircle2, CloudDownload, Download, FileJson, PackageOpen, RefreshCw, Upload, XCircle } from 'lucide-preact';
+import { ArchiveRestore, CheckCircle2, CloudDownload, Download, ExternalLink, FileJson, PackageOpen, RefreshCw, Upload, Wrench, XCircle } from 'lucide-preact';
 import { get, post } from '../api';
 import { L, ago } from '../i18n';
 import { Btn, Card, CardHead, Field, confirmDialog, run, toast } from '../ui';
@@ -209,6 +209,47 @@ export function BackupCard() {
             }}><Upload size={17} />{L('وارد کردن', 'Import')}</Btn>
           </div>
         </div>
+      </div>
+    </Card>
+  );
+}
+
+interface LuciStatus { installed: boolean; running: boolean; port: number }
+
+/** LuciCard opens OpenWrt's own interface temporarily for rare settings. */
+export function LuciCard() {
+  const [st, setSt] = useState<LuciStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { get<LuciStatus>('/luci').then(setSt).catch(() => {}); }, []);
+  if (!st || !st.installed) return null;
+  const url = `${location.protocol}//${location.hostname}:${st.port}/`;
+  return (
+    <Card>
+      <CardHead icon={<Wrench size={20} />} title={L('تنظیمات پیشرفتهٔ OpenWrt', 'Advanced OpenWrt settings')}
+        sub={L('سپر رابط اصلی روتر است. رابط LuCI فقط برای تنظیمات خیلی خاص و موقتاً روشن می‌شود و با ری‌استارت روتر خودکار خاموش می‌شود.', 'Separ is the router’s main interface. LuCI is switched on only for rare settings, temporarily; a reboot turns it off again.')}
+        action={<span class={'badge' + (st.running ? ' warn' : '')}>{st.running ? L('روشن', 'On') : L('خاموش', 'Off')}</span>} />
+      <div class="card-foot">
+        {st.running ? (
+          <>
+            <a class="btn primary" href={url} target="_blank" rel="noopener"><ExternalLink size={17} />{L('باز کردن LuCI', 'Open LuCI')}</a>
+            <Btn busy={busy} onClick={async () => {
+              setBusy(true);
+              const r = await run(() => post<LuciStatus>('/luci', { enabled: false }), L('LuCI خاموش شد', 'LuCI turned off'));
+              if (r) setSt(r);
+              setBusy(false);
+            }}>{L('خاموش کردن', 'Turn off')}</Btn>
+          </>
+        ) : (
+          <Btn busy={busy} onClick={async () => {
+            setBusy(true);
+            const r = await run(() => post<LuciStatus>('/luci', { enabled: true }));
+            setBusy(false);
+            if (r) {
+              setSt(r);
+              window.open(url, '_blank', 'noopener');
+            }
+          }}><Wrench size={17} />{L('روشن کردن موقت LuCI', 'Turn on LuCI temporarily')}</Btn>
+        )}
       </div>
     </Card>
   );

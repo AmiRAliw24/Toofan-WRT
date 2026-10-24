@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"separ/internal/api"
@@ -25,7 +26,7 @@ var webFS embed.FS
 var version = "dev"
 
 func main() {
-	listen := flag.String("listen", ":8080", "HTTP listen address")
+	listen := flag.String("listen", ":8080", "HTTP listen addresses, comma separated")
 	cfgPath := flag.String("config", "/etc/separ/config.json", "config file")
 	xray := flag.String("xray", "/usr/bin/xray", "xray binary")
 	webDir := flag.String("web", "", "serve the UI from this directory instead of the embedded copy")
@@ -46,8 +47,13 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 	c := core.New(store, *xray)
-	if _, port, err := net.SplitHostPort(*listen); err == nil {
-		c.PanelPort, _ = strconv.Atoi(port)
+	addrs := strings.Split(*listen, ",")
+	for _, a := range addrs {
+		if _, port, err := net.SplitHostPort(strings.TrimSpace(a)); err == nil {
+			if p, _ := strconv.Atoi(port); p > 0 {
+				c.PanelPorts = append(c.PanelPorts, p)
+			}
+		}
 	}
 	c.Start()
 
@@ -76,5 +82,10 @@ func main() {
 	}()
 
 	log.Printf("separ %s listening on %s", version, *listen)
-	log.Fatal(http.ListenAndServe(*listen, srv.Handler()))
+	h := srv.Handler()
+	errc := make(chan error, len(addrs))
+	for _, a := range addrs {
+		go func(a string) { errc <- http.ListenAndServe(strings.TrimSpace(a), h) }(a)
+	}
+	log.Fatal(<-errc)
 }

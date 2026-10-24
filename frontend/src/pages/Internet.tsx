@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Activity, ArrowDown, ArrowUp, CheckCircle2, CircleSlash, Flag, Gauge as GaugeIcon, Globe, History, LineChart as LineIcon, Play, Stethoscope, Timer, Waypoints, XCircle } from 'lucide-preact';
+import { Activity, ArrowDown, ArrowUp, CheckCircle2, CircleSlash, Flag, Gauge as GaugeIcon, Globe, History, LineChart as LineIcon, Play, Settings2, Stethoscope, Timer, Waypoints, XCircle } from 'lucide-preact';
 import { get, post, usePoll } from '../api';
+import { WanCard } from './Network';
 import { onRefresh, overview } from '../app';
 import { L, ago, clock, lang, num, pct } from '../i18n';
 import { Badge, Btn, Card, CardHead, Gauge, LineChart, PageHead, Seg, Skeleton, Tabs, run } from '../ui';
@@ -227,8 +228,8 @@ function Diagnostics() {
 }
 
 export function Internet() {
-  const initial = location.hash.includes('speed') ? 'speed' : location.hash.includes('diag') ? 'diag' : 'quality';
-  const [tab, setTab] = useState<'quality' | 'speed' | 'diag'>(initial);
+  const initial = location.hash.includes('speed') ? 'speed' : location.hash.includes('diag') ? 'diag' : location.hash.includes('setup') ? 'setup' : 'quality';
+  const [tab, setTab] = useState<'quality' | 'speed' | 'diag' | 'setup'>(initial);
   lang.value;
   return (
     <div class="stack">
@@ -237,8 +238,9 @@ export function Internet() {
         { id: 'quality', label: L('کیفیت خط', 'Line quality'), icon: <LineIcon size={17} /> },
         { id: 'speed', label: L('تست سرعت', 'Speed test'), icon: <GaugeIcon size={17} /> },
         { id: 'diag', label: L('عیب‌یابی', 'Diagnose'), icon: <Stethoscope size={17} /> },
+        { id: 'setup', label: L('تنظیم اتصال', 'Connection setup'), icon: <Settings2 size={17} /> },
       ]} />
-      {tab === 'quality' ? <Quality /> : tab === 'speed' ? <SpeedTest /> : <Diagnostics />}
+      {tab === 'quality' ? <Quality /> : tab === 'speed' ? <SpeedTest /> : tab === 'diag' ? <Diagnostics /> : <WanCard />}
     </div>
   );
 }
