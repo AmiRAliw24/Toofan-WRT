@@ -13,6 +13,7 @@ ARCH="$(uname -m)"
 case "$ARCH" in
 	armv7l) BIN=toofanwrt-armv7 ;;
 	aarch64) BIN=toofanwrt-arm64 ;;
+	x86_64) BIN=toofanwrt-amd64 ;;
 	*) die "unsupported CPU: $ARCH" ;;
 esac
 [ -f "bin/$BIN" ] || die "bin/$BIN missing from the release"
@@ -97,26 +98,26 @@ if [ -n "$XBIN" ] && [ -f "$XBIN" ]; then
 fi
 say "xray: $($XRAY version 2>/dev/null | head -1)"
 
-# The panel used to be called Separ: move its settings and data over, then
-# remove the old service so the two never run side by side.
+# The panel used to be called Separ. Its settings and data are copied over
+# and the old service is stopped; the old files are only deleted once the
+# new panel answers (the old updater may run this from /tmp/separ-update and
+# needs /usr/bin/separ.prev to roll back), so nothing is lost if this fails.
+MIGRATED=0
 if [ -e /etc/init.d/separ ] || [ -d /etc/separ ] || [ -f /etc/config/separ ]; then
 	say "migrating Separ -> ToofanWrt (settings are kept)"
+	MIGRATED=1
 	/etc/init.d/separ stop 2>/dev/null || true
 	/etc/init.d/separ disable 2>/dev/null || true
 	i=0
 	while pidof separ >/dev/null 2>&1 && [ $i -lt 15 ]; do sleep 1; i=$((i+1)); done
 	pidof separ >/dev/null 2>&1 && kill -9 $(pidof separ) 2>/dev/null || true
-	if [ -d /etc/separ ] && [ ! -d /etc/toofanwrt ]; then mv /etc/separ /etc/toofanwrt; fi
+	if [ -d /etc/separ ] && [ ! -d /etc/toofanwrt ]; then cp -a /etc/separ /etc/toofanwrt; fi
 	if [ -f /etc/config/separ ] && [ ! -s /etc/config/toofanwrt ]; then
 		sed 's/^config separ /config toofanwrt /' /etc/config/separ > /etc/config/toofanwrt
 	fi
-	rm -f /etc/config/separ /etc/init.d/separ /usr/bin/separ /usr/bin/separ.prev /usr/bin/separ.new \
-		/etc/hotplug.d/iface/99-separ /lib/upgrade/keep.d/separ /usr/share/separ-uninstall.sh
-	rm -rf /usr/libexec/separ /tmp/separ-update /tmp/separ-restarting
 	nft delete table inet separ 2>/dev/null || true
 	nft delete table bridge separ 2>/dev/null || true
 	for d in /tmp/dnsmasq.d /tmp/dnsmasq.*.d; do rm -f "$d/separ.conf" 2>/dev/null || true; done
-	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
 fi
 
 say "installing panel"
@@ -181,17 +182,35 @@ fi
 /etc/init.d/toofanwrt enable
 /etc/init.d/toofanwrt start
 
+# panel_up waits up to 30 s for the new panel to answer.
+PANEL_UP=0
+panel_up() {
+	[ $PANEL_UP = 1 ] && return 0
+	P0="$(uci -q get toofanwrt.main.listen | cut -d, -f1 | sed 's/.*://')"
+	i=0
+	while [ $i -lt 30 ]; do
+		if wget -q -T 2 -O - "http://127.0.0.1:${P0:-80}/api/ping" 2>/dev/null | grep -q version; then PANEL_UP=1; return 0; fi
+		sleep 1; i=$((i+1))
+	done
+	return 1
+}
+
+if [ $MIGRATED = 1 ]; then
+	if panel_up; then
+		say "removing the old Separ files"
+		rm -rf /etc/separ /usr/libexec/separ /tmp/separ-restarting
+		rm -f /etc/config/separ /etc/init.d/separ /usr/bin/separ /usr/bin/separ.prev /usr/bin/separ.new \
+			/etc/hotplug.d/iface/99-separ /lib/upgrade/keep.d/separ /usr/share/separ-uninstall.sh
+	else
+		say "the new panel did not answer; the old Separ files were kept"
+	fi
+fi
+
 # One interface only: remove LuCI, but only after ToofanWrt is confirmed to be
 # answering, so the router is never left without a web interface.
 # KEEP_LUCI=1 sh install.sh keeps it. It can be put back from the panel.
 if [ "$KEEP_LUCI" != 1 ] && [ "$PM" = opkg ] && opkg list-installed | grep -qE '^(luci|uhttpd)'; then
-	P0="$(uci -q get toofanwrt.main.listen | cut -d, -f1 | sed 's/.*://')"
-	i=0; up=0
-	while [ $i -lt 20 ]; do
-		if wget -q -T 2 -O - "http://127.0.0.1:${P0:-80}/api/ping" 2>/dev/null | grep -q version; then up=1; break; fi
-		sleep 1; i=$((i+1))
-	done
-	if [ $up = 1 ]; then
+	if panel_up; then
 		say "removing LuCI (ToofanWrt is now the only interface)"
 		/etc/init.d/uhttpd stop 2>/dev/null || true
 		/etc/init.d/uhttpd disable 2>/dev/null || true
@@ -215,6 +234,7 @@ fi
 if [ -z "$TOOFAN_UPDATE" ] && [ -z "$SEPAR_UPDATE" ]; then
 	HERE="$(pwd)"
 	case "$HERE" in /tmp/*) cd / && rm -rf "$HERE" ;; esac
+	[ -L /tmp/separ ] && rm -f /tmp/separ
 	rm -f /tmp/toofanwrt-*.tar.gz /tmp/toofanwrt-update/*.tar.gz 2>/dev/null || true
 	rm -rf /tmp/toofanwrt-update/toofanwrt 2>/dev/null || true
 fi
