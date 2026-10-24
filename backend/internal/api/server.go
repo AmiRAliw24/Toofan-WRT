@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"separ/internal/config"
@@ -18,6 +19,7 @@ import (
 	"separ/internal/devices"
 	"separ/internal/env"
 	"separ/internal/proxy"
+	"separ/internal/update"
 	"separ/internal/wifi"
 )
 
@@ -27,6 +29,9 @@ type Server struct {
 	web     fs.FS
 	speed   core.SpeedTest
 	Version string
+
+	updOnce sync.Once
+	upd     *update.Updater
 }
 
 func New(c *core.Core, web fs.FS, version string) *Server {
@@ -71,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/speedtest", s.speedStart)
 
 	s.phase2Routes(api)
+	s.phase3Routes(api)
 	api.HandleFunc("GET /api/dns", s.dnsGet)
 	api.HandleFunc("POST /api/dns", s.dnsSet)
 

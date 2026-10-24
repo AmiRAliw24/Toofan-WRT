@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -29,7 +30,12 @@ func main() {
 	xray := flag.String("xray", "/usr/bin/xray", "xray binary")
 	webDir := flag.String("web", "", "serve the UI from this directory instead of the embedded copy")
 	mock := flag.Bool("mock", false, "simulate a router (for development)")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	env.Mock = *mock
 	if env.Mock {

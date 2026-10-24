@@ -146,7 +146,10 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			writeErr(w, http.StatusUnauthorized, "login required")
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		// Uploads send raw bytes; a custom header can't be added cross-site
+		// without a CORS preflight, so it is as safe as the JSON rule.
+		upload := r.Header.Get("X-Separ-Upload") == "1"
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !upload {
 			if ct := r.Header.Get("Content-Type"); len(ct) < 16 || ct[:16] != "application/json" {
 				writeErr(w, http.StatusUnsupportedMediaType, "json required")
 				return

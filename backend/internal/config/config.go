@@ -127,6 +127,7 @@ type Config struct {
 	LockWAN   bool              `json:"lockWan"` // panel/SSH unreachable from WAN
 	SmartWiFi bool              `json:"smartWifi"`
 	SQM       SQM               `json:"sqm"`
+	UpdateURL string            `json:"updateUrl"` // release manifest (JSON)
 }
 
 func Default() *Config {
