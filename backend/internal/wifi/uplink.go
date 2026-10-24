@@ -3,6 +3,7 @@ package wifi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/rand"
 	"sort"
 	"strings"
@@ -100,16 +101,27 @@ func ScanNetworks() ([]Network, error) {
 		sort.Slice(out, func(i, j int) bool { return out[i].Signal > out[j].Signal })
 		return out, nil
 	}
+	st, err := Get()
+	if err != nil {
+		return nil, err
+	}
 	var out []Network
 	var lastErr error
 	scanned := 0
-	for _, band := range []string{"2g", "5g"} {
-		dev, _, err := apDevice(band)
-		if err != nil {
-			lastErr = err
-			continue
+	for _, b := range st.Bands {
+		// iwinfo accepts the radio name and spawns a temporary interface when
+		// the radio has none (Wi-Fi off), the same way LuCI's Scan works.
+		devs := []string{b.Radio}
+		if dev, _, err := apDevice(b.Band); err == nil {
+			devs = append([]string{dev}, devs...)
 		}
-		raw, err := env.Run(30*time.Second, "ubus", "-t", "25", "call", "iwinfo", "scan", `{"device":"`+dev+`"}`)
+		var raw string
+		for _, dev := range devs {
+			raw, err = env.Run(35*time.Second, "ubus", "-t", "30", "call", "iwinfo", "scan", `{"device":"`+dev+`"}`)
+			if err == nil {
+				break
+			}
+		}
 		if err != nil {
 			lastErr = err
 			continue
@@ -129,15 +141,15 @@ func ScanNetworks() ([]Network, error) {
 			if r.SSID == "" {
 				continue // hidden networks
 			}
-			out = append(out, Network{SSID: r.SSID, BSSID: strings.ToLower(r.BSSID), Band: band,
+			out = append(out, Network{SSID: r.SSID, BSSID: strings.ToLower(r.BSSID), Band: b.Band,
 				Channel: r.Channel, Signal: r.Signal, Encryption: encFromScan(r.Encryption)})
 		}
 	}
 	if scanned == 0 {
 		if lastErr == nil {
-			lastErr = errors.New("no radio available")
+			lastErr = errors.New("no Wi-Fi radio found")
 		}
-		return nil, errors.New("Wi-Fi must be enabled on at least one band to scan: " + lastErr.Error())
+		return nil, fmt.Errorf("scan failed: %v", lastErr)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Signal > out[j].Signal })
 	return out, nil
@@ -217,16 +229,22 @@ func ConnectUplink(n Network, key string) error {
 	if err != nil {
 		return err
 	}
-	radio := ""
-	for _, b := range st.Bands {
-		if b.Band == n.Band {
-			radio = b.Radio
+	var band *Band
+	for i := range st.Bands {
+		if st.Bands[i].Band == n.Band {
+			band = &st.Bands[i]
 		}
 	}
-	if radio == "" {
+	if band == nil {
 		return errors.New("no radio for this band")
 	}
+	radio := band.Radio
 	b := uci.NewBatch()
+	// Turning the radio on for the uplink must not also publish the
+	// passwordless default "OpenWrt" network of a fresh router.
+	if !band.Enabled && band.Section != "" && band.Encryption == "none" {
+		b.Set("wireless."+band.Section+".disabled", "1")
+	}
 	b.Set("network."+UplinkNet, "interface")
 	b.Set("network."+UplinkNet+".proto", "dhcp")
 	b.Set("network."+UplinkNet+".metric", "20") // the cable (metric 0) wins when present
