@@ -9,3 +9,4 @@ packages/arm_cortex-a7_neon-vfpv4/base/tc-tiny_6.3.0-1_arm_cortex-a7_neon-vfpv4.
 targets/ipq40xx/chromium/packages/kmod-sched-core_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk
 targets/ipq40xx/chromium/packages/kmod-sched-cake_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk
 targets/ipq40xx/chromium/packages/kmod-ifb_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk
+targets/ipq40xx/chromium/packages/kmod-nft-bridge_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk

@@ -303,6 +303,9 @@ function ServerList({ d, reload, setData }: { d: ProxyResp; reload: () => void; 
                   <span class="ltr">{transportLabel(s)}</span>
                   {subName(s.subId) && <span>· {subName(s.subId)}</span>}
                 </div>
+                {s.latencyMs < 0 && s.testError && (
+                  <div class="tiny ltr truncate" style="color:var(--danger-strong);text-align:start" title={s.testError}>{s.testError}</div>
+                )}
               </div>
               <Latency s={s} testing={testing.has(s.id)} />
               <Btn sm icon kind="ghost" aria-label={L('آزمایش', 'Test')} onClick={(e: Event) => { e.stopPropagation(); testAll([s.id]); }}>

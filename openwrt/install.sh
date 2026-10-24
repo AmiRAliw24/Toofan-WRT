@@ -63,8 +63,8 @@ if [ -n "$MISSING" ]; then
 	# shellcheck disable=SC2086
 	pm_install $MISSING || die "could not install:$MISSING"
 fi
-# Optional features: OpenVPN, UPnP and SQM. Failures here are not fatal.
-OPTIONAL="openvpn-mbedtls miniupnpd-nftables tc-tiny kmod-sched-cake kmod-ifb"
+# Optional features: OpenVPN, UPnP, SQM and per-Wi-Fi routing. Failures here are not fatal.
+OPTIONAL="openvpn-mbedtls miniupnpd-nftables tc-tiny kmod-sched-cake kmod-ifb kmod-nft-bridge"
 OPT_MISSING=""
 for p in $OPTIONAL; do pm_has "$p" || OPT_MISSING="$OPT_MISSING $p"; done
 if [ -n "$OPT_MISSING" ]; then

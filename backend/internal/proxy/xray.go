@@ -24,8 +24,16 @@ type BuildOpts struct {
 	SplitIran bool
 	BlockAds  bool
 	ISPDNS    []string // resolvers of the upstream line, used for Iranian names
-	SecureDNS string   // resolver used through the tunnel
+	SecureDNS []string // resolvers used through the tunnel
 	HaveIran  bool     // iran.dat is installed
+	// KernelIran: Iranian IP ranges are already excluded in nftables, so Xray
+	// doesn't need to load the 20+ MB geoip.dat (slow on router CPUs).
+	KernelIran bool
+}
+
+var privateCIDRs = []string{
+	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+	"172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4", "fc00::/7", "fe80::/10",
 }
 
 // BuildConfig renders the full Xray config for the transparent proxy.
@@ -62,11 +70,13 @@ func BuildConfig(o BuildOpts) ([]byte, error) {
 		}
 	}
 	secure := o.SecureDNS
-	if secure == "" {
-		secure = "https://1.1.1.1/dns-query"
+	if len(secure) == 0 {
+		secure = []string{"https://1.1.1.1/dns-query"}
 	}
-	dnsServers = append(dnsServers, secure)
-	if !strings.HasPrefix(secure, "https://8.8.8.8") {
+	for _, d := range secure {
+		dnsServers = append(dnsServers, d)
+	}
+	if len(secure) < 2 && !strings.HasPrefix(secure[0], "https://8.8.8.8") {
 		dnsServers = append(dnsServers, "https://8.8.8.8/dns-query")
 	}
 
@@ -79,7 +89,7 @@ func BuildConfig(o BuildOpts) ([]byte, error) {
 	}
 	rules = append(rules,
 		map[string]any{"type": "field", "inboundTag": []string{"dns-internal"}, "outboundTag": "proxy"},
-		map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},
+		map[string]any{"type": "field", "ip": privateCIDRs, "outboundTag": "direct"},
 	)
 	if o.BlockAds && o.HaveIran {
 		rules = append(rules, map[string]any{"type": "field", "domain": []string{"ext:iran.dat:ads"}, "outboundTag": "block"})
@@ -89,10 +99,10 @@ func BuildConfig(o BuildOpts) ([]byte, error) {
 		if o.HaveIran {
 			dom = append(dom, assetIran)
 		}
-		rules = append(rules,
-			map[string]any{"type": "field", "domain": dom, "outboundTag": "direct"},
-			map[string]any{"type": "field", "ip": []string{"geoip:ir"}, "outboundTag": "direct"},
-		)
+		rules = append(rules, map[string]any{"type": "field", "domain": dom, "outboundTag": "direct"})
+		if !o.KernelIran {
+			rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:ir"}, "outboundTag": "direct"})
+		}
 	}
 	rules = append(rules, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"})
 
@@ -171,7 +181,9 @@ func BuildTestConfig(servers []config.Server, basePort int, isp []string) ([]byt
 	for _, ip := range ispResolvers(isp) {
 		dnsServers = append(dnsServers, ip)
 	}
-	dnsServers = append(dnsServers, "localhost")
+	// Fallbacks queried directly (not through dnsmasq, which may point at
+	// the main Xray instance while it restarts).
+	dnsServers = append(dnsServers, "8.8.8.8", "1.1.1.1", "localhost")
 	cfg := map[string]any{
 		"log":       map[string]any{"loglevel": "error"},
 		"dns":       map[string]any{"servers": dnsServers, "queryStrategy": "UseIPv4"},

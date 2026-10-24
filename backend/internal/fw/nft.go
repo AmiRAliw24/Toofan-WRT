@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"separ/internal/env"
 )
 
 const (
+	// DirectMark tags packets from Wi-Fi networks set to "direct"; it is set
+	// in the bridge family (where the input Wi-Fi interface is still known).
+	DirectMark = 0x100
 	Table      = "separ"
 	ProxyMark  = 1
 	RouteTable = 100
@@ -33,20 +37,21 @@ type ScheduleRule struct {
 }
 
 type Plan struct {
-	LANIfaces   []string // traffic from these is proxied
-	AllIfaces   []string // every local client interface (for blocks/accounting)
-	TProxy      bool     // capture traffic to Xray
-	TProxyPort  int
-	IranCIDRs   []string // bypassed at kernel level when non-empty
-	BypassMACs  []string
-	BlockMACs   []string
-	BlockIPv6   bool
-	Devices     []DeviceRule
-	Schedules   []ScheduleRule
-	PriorityIPs []string // marked with DSCP EF for queueing
-	LockWAN     bool     // drop panel/SSH/LuCI connections arriving from the WAN
-	WANDev      string
-	PanelPorts  []int
+	LANIfaces     []string // traffic from these is proxied
+	AllIfaces     []string // every local client interface (for blocks/accounting)
+	TProxy        bool     // capture traffic to Xray
+	TProxyPort    int
+	IranCIDRs     []string // bypassed at kernel level when non-empty
+	BypassMACs    []string
+	BlockMACs     []string
+	BlockIPv6     bool
+	Devices       []DeviceRule
+	Schedules     []ScheduleRule
+	PriorityIPs   []string // marked with DSCP EF for queueing
+	DirectNetdevs []string // Wi-Fi networks whose clients bypass the tunnel
+	LockWAN       bool     // drop panel/SSH/LuCI connections arriving from the WAN
+	WANDev        string
+	PanelPorts    []int
 }
 
 var privateNets = []string{
@@ -136,6 +141,7 @@ func Render(p Plan) string {
 		b.WriteString("\t\tmeta nfproto ipv6 return\n")
 		b.WriteString("\t\tip daddr @private4 return\n")
 		b.WriteString("\t\tether saddr @bypass_mac return\n")
+		fmt.Fprintf(&b, "\t\tmeta mark & 0x%x == 0x%x return\n", DirectMark, DirectMark)
 		if len(p.IranCIDRs) > 0 {
 			b.WriteString("\t\tip daddr @iran4 return\n")
 		}
@@ -205,6 +211,37 @@ func scheduleRanges(s ScheduleRule) []string {
 	}
 }
 
+// RenderBridge tags frames from "direct" Wi-Fi networks. It is a separate
+// table so a missing kmod-nft-bridge can't break the main rules.
+func RenderBridge(p Plan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "table bridge %s\ndelete table bridge %s\n", Table, Table)
+	if len(p.DirectNetdevs) == 0 {
+		return b.String()
+	}
+	fmt.Fprintf(&b, "table bridge %s {\n\tchain direct_wifi {\n\t\ttype filter hook prerouting priority -200; policy accept;\n", Table)
+	fmt.Fprintf(&b, "\t\tiifname { %s } meta mark set meta mark | 0x%x\n", quoteList(p.DirectNetdevs), DirectMark)
+	b.WriteString("\t}\n}\n")
+	return b.String()
+}
+
+var (
+	bridgeOnce sync.Once
+	bridgeOK   bool
+)
+
+// BridgeSupported reports whether nftables can filter in the bridge family.
+func BridgeSupported() bool {
+	if env.Mock {
+		return true
+	}
+	bridgeOnce.Do(func() {
+		_, err := env.RunInput(10*time.Second, "table bridge separ_probe\ndelete table bridge separ_probe\n", "nft", "-f", "-")
+		bridgeOK = err == nil
+	})
+	return bridgeOK
+}
+
 // Apply loads the plan and makes sure policy routing for TProxy exists.
 func Apply(p Plan) error {
 	script := Render(p)
@@ -213,6 +250,11 @@ func Apply(p Plan) error {
 	}
 	if _, err := env.RunInput(20*time.Second, script, "nft", "-f", "-"); err != nil {
 		return err
+	}
+	if len(p.DirectNetdevs) > 0 || BridgeSupported() {
+		if _, err := env.RunInput(10*time.Second, RenderBridge(p), "nft", "-f", "-"); err != nil && len(p.DirectNetdevs) > 0 {
+			env.Logf("per-Wi-Fi routing needs kmod-nft-bridge: %v", err)
+		}
 	}
 	ensurePolicyRoute()
 	return nil
@@ -232,6 +274,7 @@ func Remove() {
 		return
 	}
 	env.Run(10*time.Second, "nft", "delete", "table", "inet", Table)
+	env.Run(10*time.Second, "nft", "delete", "table", "bridge", Table)
 }
 
 // Exists reports whether our table is still loaded (fw4 restarts can't

@@ -12,6 +12,7 @@ import (
 
 	"separ/internal/config"
 	"separ/internal/env"
+	"separ/internal/fw"
 	"separ/internal/luci"
 	"separ/internal/netcfg"
 	"separ/internal/proxy"
@@ -38,6 +39,10 @@ func (s *Server) phase3Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/network/uplink/scan", s.uplinkScan)
 	api.HandleFunc("POST /api/network/uplink", s.uplinkConnect)
 	api.HandleFunc("POST /api/network/uplink/disconnect", s.uplinkDisconnect)
+	api.HandleFunc("GET /api/wifi/networks", s.wifiNetworks)
+	api.HandleFunc("POST /api/wifi/networks", s.wifiNetworkSave)
+	api.HandleFunc("DELETE /api/wifi/networks/{section}", s.wifiNetworkDelete)
+	api.HandleFunc("POST /api/wifi/route", s.wifiRoute)
 }
 
 func (s *Server) updater() *update.Updater {
@@ -277,4 +282,91 @@ func (s *Server) uplinkConnect(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) uplinkDisconnect(w http.ResponseWriter, r *http.Request) {
 	respond(w, wifi.DisconnectUplink())
+}
+
+type netView struct {
+	wifi.SSID
+	Route string `json:"route"` // tunnel | direct
+}
+
+func (s *Server) wifiNetworks(w http.ResponseWriter, r *http.Request) {
+	nets, err := wifi.Networks()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	routes := s.core.Store.Get().WiFiRoutes
+	out := make([]netView, 0, len(nets))
+	for _, n := range nets {
+		route := "tunnel"
+		if routes[n.Section] == "direct" {
+			route = "direct"
+		}
+		out = append(out, netView{SSID: n, Route: route})
+	}
+	writeJSON(w, map[string]any{"networks": out, "routingSupported": fw.BridgeSupported()})
+}
+
+func (s *Server) setRoutes(sections []string, route string) error {
+	return s.core.Store.Update(func(c *config.Config) error {
+		for _, sec := range sections {
+			if route == "direct" {
+				c.WiFiRoutes[sec] = "direct"
+			} else {
+				delete(c.WiFiRoutes, sec)
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Server) wifiNetworkSave(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		wifi.SSID
+		Route string `json:"route"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Route == "direct" && !fw.BridgeSupported() {
+		writeErr(w, http.StatusBadRequest, "per-network routing needs the kmod-nft-bridge package")
+		return
+	}
+	secs, err := wifi.SaveNetwork(in.SSID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.setRoutes(secs, in.Route); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.core.Reapply()
+	writeJSON(w, map[string]any{"ok": true, "sections": secs})
+}
+
+func (s *Server) wifiNetworkDelete(w http.ResponseWriter, r *http.Request) {
+	sec := r.PathValue("section")
+	if err := wifi.DeleteNetwork(sec); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.setRoutes([]string{sec}, "tunnel")
+	s.core.Reapply()
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) wifiRoute(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Section string `json:"section"`
+		Route   string `json:"route"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Route == "direct" && !fw.BridgeSupported() {
+		writeErr(w, http.StatusBadRequest, "per-network routing needs the kmod-nft-bridge package")
+		return
+	}
+	respond(w, s.setRoutes([]string{in.Section}, in.Route))
 }

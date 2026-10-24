@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import qrcode from 'qrcode-generator';
-import { AlertTriangle, QrCode, Radar, Save, SlidersHorizontal, Sparkles, UserPlus, Wifi } from 'lucide-preact';
-import { post, usePoll } from '../api';
+import { AlertTriangle, Layers, Pencil, Plus, QrCode, Radar, Save, Shield, ShieldOff, SlidersHorizontal, Sparkles, Trash2, UserPlus, Wifi } from 'lucide-preact';
+import { del, post, usePoll } from '../api';
 import { onRefresh } from '../app';
 import { L, digits, lang, num } from '../i18n';
-import { Badge, Btn, Card, CardHead, Field, Modal, PageHead, Password, Setting, Skeleton, Tabs, Toggle, confirmDialog, run, toast } from '../ui';
+import { Badge, Btn, Card, CardHead, Field, Modal, PageHead, Password, Seg, Setting, Skeleton, Tabs, Toggle, confirmDialog, run, toast } from '../ui';
 
 interface Band {
   band: '2g' | '5g';
@@ -56,7 +56,30 @@ export function QRModal({ ssid, keyStr, enc, onClose }: { ssid: string; keyStr: 
   );
 }
 
-function BandForm({ b, onSaved }: { b: Band; onSaved: () => void }) {
+interface Net {
+  section: string; radio: string; band: '2g' | '5g'; ssid: string; encryption: string; key: string;
+  hidden: boolean; enabled: boolean; primary: boolean; netdev?: string; route: 'tunnel' | 'direct';
+}
+interface NetsResp { networks: Net[]; routingSupported: boolean }
+
+/** RouteChoice picks whether a Wi-Fi network's clients use the tunnel. */
+function RouteChoice({ value, onChange, supported }: { value: string; onChange: (v: 'tunnel' | 'direct') => void; supported: boolean }) {
+  return (
+    <Setting title={L('مسیر اینترنت این شبکه', 'Internet path for this network')}
+      desc={!supported
+        ? L('برای این قابلیت بستهٔ kmod-nft-bridge لازم است (با نصب دوبارهٔ پنل نصب می‌شود).', 'Needs the kmod-nft-bridge package (installed when the panel is reinstalled).')
+        : value === 'direct'
+          ? L('مستقیم: دستگاه‌های این وای‌فای بدون فیلترشکن به اینترنت وصل می‌شوند', 'Direct: devices on this Wi-Fi use the internet without the tunnel')
+          : L('از تونل: دستگاه‌های این وای‌فای از اینترنت آزاد استفاده می‌کنند', 'Tunnel: devices on this Wi-Fi use the free internet')}>
+      <Seg value={value as any} onChange={(v: any) => supported && onChange(v)} items={[
+        { id: 'tunnel', label: L('از تونل', 'Tunnel') },
+        { id: 'direct', label: L('مستقیم', 'Direct') },
+      ]} />
+    </Setting>
+  );
+}
+
+function BandForm({ b, onSaved, net, routing, onRoute }: { b: Band; onSaved: () => void; net?: Net; routing: boolean; onRoute: (v: 'tunnel' | 'direct') => void }) {
   const [f, setF] = useState(b);
   const [busy, setBusy] = useState(false);
   const [qr, setQr] = useState(false);
@@ -108,6 +131,7 @@ function BandForm({ b, onSaved }: { b: Band; onSaved: () => void }) {
         <Setting title={L('مخفی کردن نام شبکه', 'Hide network name')} desc={L('در لیست وای‌فای‌ها دیده نمی‌شود؛ باید نام را دستی وارد کرد', 'Not shown in Wi-Fi lists; the name must be typed manually')}>
           <Toggle on={f.hidden} onChange={(v) => up({ hidden: v })} />
         </Setting>
+        {net && <RouteChoice value={net.route} supported={routing} onChange={onRoute} />}
       </div>
       <div class="card-foot">
         <Btn kind="primary" busy={busy} disabled={invalid} onClick={save}><Save size={17} />{L('ذخیره', 'Save')}</Btn>
@@ -217,13 +241,108 @@ function Advanced({ smart, reload, bands }: { smart: boolean; reload: () => void
   );
 }
 
-type Tab = '2g' | '5g' | 'guest' | 'adv';
+function NetModal({ n, routing, onClose, onSaved }: { n?: Net; routing: boolean; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState<any>(n ? { ...n } : { section: '', band: '5g', ssid: '', encryption: 'sae-mixed', key: '', hidden: false, enabled: true, route: 'tunnel' });
+  const [busy, setBusy] = useState(false);
+  const up = (p: any) => setF({ ...f, ...p });
+  const invalid = !f.ssid || (f.encryption !== 'none' && f.key.length < 8);
+  return (
+    <Modal title={n ? L('ویرایش شبکه', 'Edit network') : L('شبکهٔ وای‌فای جدید', 'New Wi-Fi network')} onClose={onClose}
+      foot={<><Btn onClick={onClose}>{L('انصراف', 'Cancel')}</Btn>
+        <Btn kind="primary" busy={busy} disabled={invalid} onClick={async () => {
+          setBusy(true);
+          const ok = await run(() => post('/wifi/networks', f), L('ذخیره شد؛ وای‌فای چند ثانیه قطع و وصل می‌شود', 'Saved; Wi-Fi restarts for a few seconds'));
+          setBusy(false);
+          if (ok) { onSaved(); onClose(); }
+        }}>{L('ذخیره', 'Save')}</Btn></>}>
+      {!n && (
+        <Field label={L('باند', 'Band')}>
+          <Seg value={f.band} onChange={(v: string) => up({ band: v })} items={[
+            { id: '2g', label: L('۲٫۴ گیگ', '2.4 GHz') },
+            { id: '5g', label: L('۵ گیگ', '5 GHz') },
+            { id: 'both', label: L('هر دو', 'Both') },
+          ]} />
+        </Field>
+      )}
+      <Field label={L('نام شبکه (SSID)', 'Network name (SSID)')}>
+        <input class="input" value={f.ssid} maxLength={32} onInput={(e) => up({ ssid: (e.target as HTMLInputElement).value })} />
+      </Field>
+      <Field label={L('نوع رمزنگاری', 'Security')}>
+        <select class="select" value={f.encryption} onChange={(e) => up({ encryption: (e.target as HTMLSelectElement).value })}>
+          {encOptions().map((o) => <option value={o.id}>{o.label}</option>)}
+        </select>
+      </Field>
+      {f.encryption !== 'none' && (
+        <Field label={L('رمز عبور', 'Password')} hint={L('حداقل ۸ کاراکتر', 'At least 8 characters')}>
+          <Password value={f.key} onInput={(v) => up({ key: v })} />
+        </Field>
+      )}
+      <div>
+        <RouteChoice value={f.route} supported={routing} onChange={(v) => up({ route: v })} />
+        <Setting title={L('مخفی کردن نام شبکه', 'Hide network name')}><Toggle on={f.hidden} onChange={(v) => up({ hidden: v })} /></Setting>
+        {n && <Setting title={L('فعال باشد', 'Enabled')}><Toggle on={f.enabled} onChange={(v) => up({ enabled: v })} /></Setting>}
+      </div>
+    </Modal>
+  );
+}
+
+function Networks({ d, reload }: { d: NetsResp; reload: () => void }) {
+  const [edit, setEdit] = useState<Net | 'new' | null>(null);
+  const [qr, setQr] = useState<Net | null>(null);
+  const band = (b: string) => (b === '5g' ? L('۵ گیگ', '5 GHz') : L('۲٫۴ گیگ', '2.4 GHz'));
+  return (
+    <Card>
+      <CardHead icon={<Layers size={20} />} title={L('شبکه‌های وای‌فای', 'Wi-Fi networks')}
+        sub={L('چند وای‌فای جدا روی یک روتر؛ هر کدام می‌تواند از تونل یا مستقیم باشد (مثلاً یکی برای تلویزیون و کنسول بدون فیلترشکن)', 'Several Wi-Fi networks on one router, each through the tunnel or direct (e.g. one for the TV and console without the proxy)')}
+        action={<Btn sm kind="primary" onClick={() => setEdit('new')}><Plus size={15} />{L('شبکهٔ جدید', 'New network')}</Btn>} />
+      {d.networks.length === 0 && <div class="card-body muted">{L('هیچ شبکه‌ای تعریف نشده است.', 'No networks defined.')}</div>}
+      {d.networks.map((n) => (
+        <div class="list-item">
+          <div class="dev-icon"><Wifi size={20} /><span class={'dot' + (n.enabled ? '' : ' off')} /></div>
+          <div class="grow" style="min-width:0">
+            <div class="dev-name truncate"><bdi>{n.ssid}</bdi></div>
+            <div class="chips">
+              <span class="badge">{band(n.band)}</span>
+              {n.primary && <span class="badge info">{L('اصلی', 'Main')}</span>}
+              {n.route === 'direct'
+                ? <Badge tone="warn"><ShieldOff size={12} />{L('مستقیم', 'Direct')}</Badge>
+                : <Badge tone="ok"><Shield size={12} />{L('از تونل', 'Tunnel')}</Badge>}
+              {n.encryption === 'none' && <Badge tone="danger">{L('بی‌رمز', 'Open')}</Badge>}
+              {n.hidden && <span class="badge">{L('مخفی', 'Hidden')}</span>}
+              {!n.enabled && <span class="badge">{L('خاموش', 'Off')}</span>}
+            </div>
+          </div>
+          <Btn sm icon kind="ghost" aria-label={L('کد QR', 'QR code')} onClick={() => setQr(n)}><QrCode size={16} /></Btn>
+          <Btn sm icon kind="ghost" aria-label={L('ویرایش', 'Edit')} onClick={() => setEdit(n)}><Pencil size={16} /></Btn>
+          {!n.primary && (
+            <Btn sm icon kind="ghost" aria-label={L('حذف', 'Delete')} onClick={async () => {
+              if (await confirmDialog(L(`شبکهٔ «${n.ssid}» حذف شود؟`, `Delete “${n.ssid}”?`), true)) {
+                await run(() => del(`/wifi/networks/${n.section}`), L('حذف شد', 'Deleted'));
+                reload();
+              }
+            }}><Trash2 size={16} /></Btn>
+          )}
+        </div>
+      ))}
+      {edit && <NetModal n={edit === 'new' ? undefined : edit} routing={d.routingSupported} onClose={() => setEdit(null)} onSaved={() => { reload(); setTimeout(reload, 4000); }} />}
+      {qr && <QRModal ssid={qr.ssid} keyStr={qr.key} enc={qr.encryption} onClose={() => setQr(null)} />}
+    </Card>
+  );
+}
+
+type Tab = '2g' | '5g' | 'nets' | 'guest' | 'adv';
 
 export function WifiPage() {
   const { data, reload } = usePoll<WifiState>('/wifi', 0);
+  const nets = usePoll<NetsResp>('/wifi/networks', 0);
   const [tab, setTab] = useState<Tab>('2g');
   lang.value;
-  useEffect(() => onRefresh(reload), [reload]);
+  useEffect(() => onRefresh(() => { reload(); nets.reload(); }), [reload]);
+  const netOf = (section?: string) => nets.data?.networks.find((n) => n.section === section);
+  const setRoute = async (section: string, route: string) => {
+    await run(() => post('/wifi/route', { section, route }), L('ذخیره شد', 'Saved'));
+    nets.reload();
+  };
   const band = (data?.bands || []).find((b) => b.band === tab);
   return (
     <div class="stack">
@@ -231,12 +350,15 @@ export function WifiPage() {
       <Tabs value={tab} onChange={setTab} items={[
         { id: '2g', label: L('۲٫۴ گیگاهرتز', '2.4 GHz'), icon: <Wifi size={17} /> },
         { id: '5g', label: L('۵ گیگاهرتز', '5 GHz'), icon: <Wifi size={17} /> },
+        { id: 'nets', label: L('شبکه‌ها', 'Networks'), icon: <Layers size={17} /> },
         { id: 'guest', label: L('مهمان', 'Guest'), icon: <UserPlus size={17} /> },
         { id: 'adv', label: L('پیشرفته', 'Advanced'), icon: <SlidersHorizontal size={17} /> },
       ]} />
       {!data && <Skeleton h={400} />}
-      {data && (tab === '2g' || tab === '5g') && band && <BandForm key={band.band} b={band} onSaved={reload} />}
+      {data && (tab === '2g' || tab === '5g') && band && <BandForm key={band.band} b={band} onSaved={() => { reload(); nets.reload(); }}
+        net={netOf(band.section)} routing={!!nets.data?.routingSupported} onRoute={(v) => setRoute(band.section, v)} />}
       {data && (tab === '2g' || tab === '5g') && !band && <Card pad>{L('این باند روی دستگاه پیدا نشد', 'This band was not found on the device')}</Card>}
+      {tab === 'nets' && (nets.data ? <Networks d={nets.data} reload={() => { nets.reload(); reload(); }} /> : <Skeleton h={300} />)}
       {data && tab === 'guest' && <GuestForm g={data.guest} onSaved={reload} />}
       {data && tab === 'adv' && <Advanced smart={data.smartWifi} reload={reload} bands={data.bands || []} />}
     </div>
