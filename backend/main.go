@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"separ/internal/api"
 	"separ/internal/config"
@@ -83,9 +84,16 @@ func main() {
 
 	log.Printf("separ %s listening on %s", version, *listen)
 	h := srv.Handler()
-	errc := make(chan error, len(addrs))
+	// A busy port (e.g. LuCI still holding :80) must not take the panel
+	// down: keep retrying it while the other ports serve.
 	for _, a := range addrs {
-		go func(a string) { errc <- http.ListenAndServe(strings.TrimSpace(a), h) }(a)
+		go func(a string) {
+			for {
+				err := http.ListenAndServe(strings.TrimSpace(a), h)
+				log.Printf("listen %s: %v (retrying)", a, err)
+				time.Sleep(5 * time.Second)
+			}
+		}(a)
 	}
-	log.Fatal(<-errc)
+	select {}
 }

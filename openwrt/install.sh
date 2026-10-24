@@ -86,8 +86,14 @@ say "xray: $(xray version 2>/dev/null | head -1)"
 
 say "installing panel"
 /etc/init.d/separ stop 2>/dev/null || true
-cp "bin/$BIN" /usr/bin/separ
-chmod 755 /usr/bin/separ
+# Wait for the old process to exit, then swap the binary atomically: writing
+# over a running executable fails with "Text file busy".
+i=0
+while pidof separ >/dev/null 2>&1 && [ $i -lt 15 ]; do sleep 1; i=$((i+1)); done
+pidof separ >/dev/null 2>&1 && kill -9 $(pidof separ) 2>/dev/null || true
+cp "bin/$BIN" /usr/bin/separ.new
+chmod 755 /usr/bin/separ.new
+mv -f /usr/bin/separ.new /usr/bin/separ
 cp files/etc/init.d/separ /etc/init.d/separ
 chmod 755 /etc/init.d/separ
 mkdir -p /lib/upgrade/keep.d /etc/hotplug.d/iface /etc/separ
