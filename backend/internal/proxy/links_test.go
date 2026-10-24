@@ -3,6 +3,7 @@ package proxy
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,13 +82,17 @@ func TestXrayAcceptsConfigs(t *testing.T) {
 	_, ovpn, _ := ImportOpenVPN("remote vpn.example.com 1194\n<ca>\nx\n</ca>\n", "", "", "")
 	servers = append(servers, wg[0], ovpn)
 	for i, s := range servers {
-		for _, split := range []bool{true, false} {
-			data, _, err := BuildConfig(BuildOpts{Server: s, SplitIran: split, BlockAds: true, HaveIran: true,
-				ISPDNS: []string{"192.168.1.1", "10.10.34.34"}, KernelIran: split, AllHosts: []string{"other.example.com"}})
+		for j, mode := range []string{config.IranDirect, config.IranTunnel, config.IranBlock, config.IranBlock} {
+			kernel := j < 3 // last case: no kernel set, Xray matches geoip itself
+			data, _, err := BuildConfig(BuildOpts{Server: s, IranMode: mode, BlockAds: true, HaveIran: true,
+				ISPDNS: []string{"192.168.1.1", "10.10.34.34"}, KernelIran: kernel, AllHosts: []string{"other.example.com"}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			check(s.Protocol+"-"+s.Network+"-"+string(rune('a'+i))+map[bool]string{true: "-split", false: ""}[split], data)
+			if mode == config.IranBlock && !strings.Contains(string(data), `"domain:ir"`) {
+				t.Fatal("block mode must route Iranian domains")
+			}
+			check(fmt.Sprintf("%s-%s-%c-%s-%d", s.Protocol, s.Network, 'a'+i, mode, j), data)
 		}
 	}
 	data, _, _, err := BuildTestConfig(servers, 21000, []string{"192.168.1.1"})
@@ -154,12 +159,12 @@ func TestBaseFingerprintIgnoresServer(t *testing.T) {
 	a, _ := ParseLink(sampleLinks[0])
 	b, _ := ParseLink(sampleLinks[1])
 	hosts := []string{a.Address, b.Address}
-	_, fa, _ := BuildConfig(BuildOpts{Server: a, SplitIran: true, AllHosts: hosts})
-	_, fb, _ := BuildConfig(BuildOpts{Server: b, SplitIran: true, AllHosts: hosts})
+	_, fa, _ := BuildConfig(BuildOpts{Server: a, IranMode: config.IranDirect, AllHosts: hosts})
+	_, fb, _ := BuildConfig(BuildOpts{Server: b, IranMode: config.IranDirect, AllHosts: hosts})
 	if fa != fb {
 		t.Fatal("switching servers must not change the base config")
 	}
-	_, fc, _ := BuildConfig(BuildOpts{Server: b, SplitIran: false, AllHosts: hosts})
+	_, fc, _ := BuildConfig(BuildOpts{Server: b, IranMode: config.IranBlock, AllHosts: hosts})
 	if fc == fb {
 		t.Fatal("changing split must change the base config")
 	}

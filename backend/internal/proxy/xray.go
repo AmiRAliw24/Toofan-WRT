@@ -25,7 +25,7 @@ const assetIran = "ext:iran.dat:ir"
 
 type BuildOpts struct {
 	Server    config.Server
-	SplitIran bool
+	IranMode  string // config.IranDirect | IranTunnel | IranBlock
 	BlockAds  bool
 	ISPDNS    []string // resolvers of the upstream line, used for Iranian names
 	SecureDNS []string // resolvers used through the tunnel
@@ -88,7 +88,7 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 		}
 	}
 	sort.Strings(direct)
-	if o.SplitIran {
+	if o.IranMode == config.IranDirect {
 		direct = append(direct, "domain:ir")
 		if o.HaveIran {
 			direct = append(direct, assetIran)
@@ -128,14 +128,18 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	if o.BlockAds && o.HaveIran {
 		rules = append(rules, map[string]any{"type": "field", "domain": []string{"ext:iran.dat:ads"}, "outboundTag": "block"})
 	}
-	if o.SplitIran {
+	if o.IranMode == config.IranDirect || o.IranMode == config.IranBlock {
+		to := "direct"
+		if o.IranMode == config.IranBlock {
+			to = "block"
+		}
 		dom := []string{"domain:ir"}
 		if o.HaveIran {
 			dom = append(dom, assetIran)
 		}
-		rules = append(rules, map[string]any{"type": "field", "domain": dom, "outboundTag": "direct"})
+		rules = append(rules, map[string]any{"type": "field", "domain": dom, "outboundTag": to})
 		if !o.KernelIran {
-			rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:ir"}, "outboundTag": "direct"})
+			rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:ir"}, "outboundTag": to})
 		}
 	}
 	rules = append(rules, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"})

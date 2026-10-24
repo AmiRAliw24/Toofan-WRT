@@ -335,6 +335,28 @@ h1, h2, h3 { text-wrap: balance; }
 .seg button.active { background: var(--bg-elev); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
 .seg button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Choice cards: a radio group where each option needs a sentence. */
+.choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.choice {
+  display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; text-align: start;
+  padding: 12px 14px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+  background: var(--bg-elev); color: var(--text); cursor: pointer; font: inherit;
+  transition: border-color .15s, background-color .15s;
+}
+.choice:hover { border-color: var(--border-strong); }
+.choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choice-icon {
+  grid-row: span 2; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  background: var(--bg-sunken); color: var(--text-2);
+}
+.choice-title { font-weight: 800; font-size: var(--fs-md); }
+.choice-desc { grid-column: 2; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.6; }
+.choice.active { border-color: var(--primary); background: var(--primary-soft); }
+.choice.active .choice-icon { background: var(--primary); color: var(--primary-text); }
+.choice.danger.active { border-color: var(--danger); background: var(--danger-soft); }
+.choice.danger.active .choice-icon { background: var(--danger); color: var(--bg-elev); }
+@media (max-width: 640px) { .choice-grid { grid-template-columns: 1fr; } }
+
 .badge {
   display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 9px;
   border-radius: 7px; font-size: 12px; font-weight: 600; line-height: 1;

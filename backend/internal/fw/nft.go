@@ -17,9 +17,11 @@ const (
 	// DirectMark tags packets from Wi-Fi networks set to "direct"; it is set
 	// in the bridge family (where the input Wi-Fi interface is still known).
 	DirectMark = 0x100
-	Table      = "separ"
-	ProxyMark  = 1
-	RouteTable = 100
+	// IranBlockMark tags LAN packets for Iranian IPs when they are blocked.
+	IranBlockMark = 0x200
+	Table         = "separ"
+	ProxyMark     = 1
+	RouteTable    = 100
 )
 
 type DeviceRule struct {
@@ -42,6 +44,7 @@ type Plan struct {
 	TProxy        bool     // capture traffic to Xray
 	TProxyPort    int
 	IranCIDRs     []string // bypassed at kernel level when non-empty
+	IranBlock     bool     // IranCIDRs are refused instead of bypassed
 	BypassMACs    []string
 	BlockMACs     []string
 	BlockIPv6     bool
@@ -134,20 +137,33 @@ func Render(p Plan) string {
 		b.WriteString("\t}\n")
 	}
 
-	// Transparent proxy capture.
+	block := p.IranBlock && len(p.IranCIDRs) > 0 && len(p.LANIfaces) > 0
+	// Transparent proxy capture. Blocked Iranian traffic is only marked
+	// here; it is refused in forward, where a reject can answer at once
+	// instead of leaving apps waiting for a timeout.
 	b.WriteString("\tchain proxy {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n")
-	if p.TProxy && len(p.LANIfaces) > 0 {
+	if (p.TProxy || block) && len(p.LANIfaces) > 0 {
 		fmt.Fprintf(&b, "\t\tiifname != { %s } return\n", quoteList(p.LANIfaces))
 		b.WriteString("\t\tmeta nfproto ipv6 return\n")
 		b.WriteString("\t\tip daddr @private4 return\n")
 		b.WriteString("\t\tether saddr @bypass_mac return\n")
 		fmt.Fprintf(&b, "\t\tmeta mark & 0x%x == 0x%x return\n", DirectMark, DirectMark)
-		if len(p.IranCIDRs) > 0 {
+		if block {
+			fmt.Fprintf(&b, "\t\tip daddr @iran4 meta mark set meta mark | 0x%x return\n", IranBlockMark)
+		} else if len(p.IranCIDRs) > 0 {
 			b.WriteString("\t\tip daddr @iran4 return\n")
 		}
-		fmt.Fprintf(&b, "\t\tmeta l4proto { tcp, udp } meta mark set %d tproxy ip to 127.0.0.1:%d accept\n", ProxyMark, p.TProxyPort)
+		if p.TProxy {
+			fmt.Fprintf(&b, "\t\tmeta l4proto { tcp, udp } meta mark set %d tproxy ip to 127.0.0.1:%d accept\n", ProxyMark, p.TProxyPort)
+		}
 	}
 	b.WriteString("\t}\n")
+	if block {
+		b.WriteString("\tchain iran_block {\n\t\ttype filter hook forward priority filter - 5; policy accept;\n")
+		fmt.Fprintf(&b, "\t\tmeta mark & 0x%x == 0x%x meta l4proto tcp reject with tcp reset\n", IranBlockMark, IranBlockMark)
+		fmt.Fprintf(&b, "\t\tmeta mark & 0x%x == 0x%x reject with icmpx type admin-prohibited\n", IranBlockMark, IranBlockMark)
+		b.WriteString("\t}\n")
+	}
 
 	// Per-device byte counters: upload on ingress, download on egress.
 	b.WriteString("\tchain acct_up {\n\t\ttype filter hook prerouting priority mangle - 20; policy accept;\n")

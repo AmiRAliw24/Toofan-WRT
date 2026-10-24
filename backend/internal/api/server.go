@@ -210,6 +210,7 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		"wan":      s.core.Sampler.WAN(),
 		"proxy":    s.core.Proxy.Status(),
 		"split":    cfg.Proxy.SplitIran,
+		"iranMode": cfg.Proxy.IranMode,
 		"devices":  map[string]int{"total": len(devs), "online": online},
 		"top":      top,
 		"quality":  map[string]any{"ext": q.LastExt, "dom": q.LastDom},
@@ -322,7 +323,24 @@ func (s *Server) proxySettings(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		boolField("enabled", &p.Enabled)
-		boolField("splitIran", &p.SplitIran)
+		if _, ok := in["splitIran"]; ok {
+			boolField("splitIran", &p.SplitIran)
+			p.IranMode = config.IranTunnel
+			if p.SplitIran {
+				p.IranMode = config.IranDirect
+			}
+		}
+		if v, ok := in["iranMode"]; ok {
+			var m string
+			json.Unmarshal(v, &m)
+			switch m {
+			case config.IranDirect, config.IranTunnel, config.IranBlock:
+				p.IranMode = m
+				p.SplitIran = m == config.IranDirect
+			default:
+				return fmt.Errorf("unknown Iran mode %q", m)
+			}
+		}
 		boolField("killSwitch", &p.KillSwitch)
 		boolField("blockIPv6", &p.BlockIPv6)
 		boolField("guestProxy", &p.GuestProxy)
@@ -500,13 +518,12 @@ func (s *Server) proxyTest(w http.ResponseWriter, r *http.Request) {
 		IDs []string `json:"ids"`
 	}
 	decode(w, r, &in)
-	var res []proxy.TestResult
-	if len(in.IDs) == 0 {
-		res = s.core.Proxy.TestAll()
-	} else {
-		res = s.core.Proxy.TestServers(in.IDs)
+	ids := in.IDs
+	if len(ids) == 0 {
+		ids = nil
 	}
-	writeJSON(w, res)
+	// Results stream into the server list; the panel polls /proxy.
+	writeJSON(w, map[string]any{"started": s.core.Proxy.StartTest(ids)})
 }
 
 func (s *Server) addSub(name, u string) error {

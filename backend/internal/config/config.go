@@ -65,7 +65,8 @@ type Proxy struct {
 	Subscriptions []Subscription  `json:"subscriptions"`
 	ActiveID      string          `json:"activeId"`
 	PreferredID   string          `json:"preferredId"`
-	SplitIran     bool            `json:"splitIran"`
+	SplitIran     bool            `json:"splitIran"` // kept in sync with IranMode for older readers
+	IranMode      string          `json:"iranMode"`  // direct | tunnel | block
 	KillSwitch    bool            `json:"killSwitch"`
 	BlockIPv6     bool            `json:"blockIPv6"`
 	GuestProxy    bool            `json:"guestProxy"`
@@ -138,6 +139,7 @@ func Default() *Config {
 		Proxy: Proxy{
 			Engine:        "xray",
 			SplitIran:     true,
+			IranMode:      IranDirect,
 			KillSwitch:    false,
 			BlockIPv6:     true,
 			AutoBest:      false,
@@ -261,4 +263,20 @@ func normalize(c *Config) {
 	if c.WiFiRoutes == nil {
 		c.WiFiRoutes = map[string]string{}
 	}
+	switch c.Proxy.IranMode {
+	case IranDirect, IranTunnel, IranBlock:
+	default: // configs from before the mode existed
+		c.Proxy.IranMode = IranTunnel
+		if c.Proxy.SplitIran {
+			c.Proxy.IranMode = IranDirect
+		}
+	}
+	c.Proxy.SplitIran = c.Proxy.IranMode == IranDirect
 }
+
+// What happens to traffic for Iranian sites while the tunnel is on.
+const (
+	IranDirect = "direct" // straight out on the local line
+	IranTunnel = "tunnel" // through the tunnel like everything else
+	IranBlock  = "block"  // not reachable at all
+)

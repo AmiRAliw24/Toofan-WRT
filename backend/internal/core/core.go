@@ -345,8 +345,12 @@ func (c *Core) apply() {
 		WANDev:     c.Sampler.WAN().Device,
 		PanelPorts: append(append([]int{}, c.PanelPorts...), luci.AltPort),
 	}
-	if cfg.Proxy.SplitIran {
+	switch {
+	case cfg.Proxy.IranMode == config.IranDirect:
 		plan.IranCIDRs = c.iranCIDRs
+	case cfg.Proxy.IranMode == config.IranBlock && cfg.Proxy.Enabled:
+		plan.IranCIDRs = c.iranCIDRs
+		plan.IranBlock = len(c.iranCIDRs) > 0
 	}
 	plan.DirectNetdevs = c.directNetdevs(cfg)
 	for mac, d := range cfg.Devices {
