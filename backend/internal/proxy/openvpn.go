@@ -217,15 +217,6 @@ func (m *Manager) stopOpenVPN() {
 	}
 }
 
-func (m *Manager) ovpnLogs() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.ovpn == nil || m.ovpn.tail == nil {
-		return ""
-	}
-	return m.ovpn.tail.String()
-}
-
 // tunReady reports whether the tun device exists and has an IPv4 address.
 func tunReady() bool {
 	if env.Mock {

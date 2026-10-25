@@ -106,10 +106,6 @@ func archBin() string {
 // Apply verifies a release tarball and hands installation to the guard.
 func (u *Updater) Apply(tarball string) error {
 	u.set("verifying", "", "")
-	fail := func(err error) error {
-		u.set("failed", err.Error(), "")
-		return err
-	}
 	if u.Simulate {
 		time.Sleep(time.Second)
 		u.set("installing", "", "mock")
@@ -121,7 +117,7 @@ func (u *Updater) Apply(tarball string) error {
 	_, err := env.Run(60*time.Second, "tar", "-xzf", tarball, "-C", workDir)
 	os.Remove(tarball)
 	// /tmp is RAM: never leave an extracted release behind on failure.
-	fail = func(err error) error {
+	fail := func(err error) error {
 		os.RemoveAll(dir)
 		u.set("failed", err.Error(), "")
 		return err

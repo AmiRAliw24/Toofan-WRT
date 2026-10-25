@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   Check, FileUp, Gauge, Link2, ListChecks, Plus, Power, RefreshCw, ScrollText, Server as ServerIcon, ShieldCheck,
   ShieldHalf, Split, Star, Trash2, Wand2, Zap, Globe2, Users, Timer, Ban,
@@ -242,6 +242,8 @@ function ServerList({ d, reload, setData }: { d: ProxyResp; reload: () => void; 
 
   // The router measures in the background and stores each result as soon
   // as it arrives; poll quickly so every latency shows up right away.
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
   const testAll = async (ids?: string[]) => {
     let waiting = new Set(ids || servers.filter((s) => s.protocol !== 'openvpn').map((s) => s.id));
     setTesting(waiting);
@@ -253,7 +255,7 @@ function ServerList({ d, reload, setData }: { d: ProxyResp; reload: () => void; 
       return;
     }
     const until = Date.now() + 60000;
-    while (waiting.size > 0 && Date.now() < until) {
+    while (alive.current && waiting.size > 0 && Date.now() < until) {
       await new Promise((r) => setTimeout(r, 450));
       try {
         const nd = await get<ProxyResp>('/proxy');

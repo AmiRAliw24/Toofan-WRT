@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"toofanwrt/internal/env"
@@ -56,10 +57,15 @@ func confDir() string {
 	return "/tmp/dnsmasq.d"
 }
 
-var last string
+var (
+	mu   sync.Mutex // Apply runs from the firewall loop, Recover from the guard
+	last string
+)
 
 // Apply writes the drop-in and restarts dnsmasq only when it changed.
 func Apply(p Plan) error {
+	mu.Lock()
+	defer mu.Unlock()
 	content := render(p)
 	if env.Mock || content == last {
 		last = content
@@ -125,6 +131,8 @@ func Running() bool {
 
 // Recover restarts dnsmasq; if it still won't run, our drop-in goes.
 func Recover() {
+	mu.Lock()
+	defer mu.Unlock()
 	env.Run(20*time.Second, "/etc/init.d/dnsmasq", "restart")
 	if running() {
 		return

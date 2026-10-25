@@ -29,7 +29,6 @@ type Server struct {
 	core    *core.Core
 	sess    *sessions
 	web     fs.FS
-	speed   core.SpeedTest
 	Version string
 
 	updOnce sync.Once

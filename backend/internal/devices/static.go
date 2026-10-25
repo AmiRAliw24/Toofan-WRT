@@ -32,7 +32,8 @@ func hostSection(mac string) (section, ip string) {
 			continue
 		}
 		for _, m := range strings.Fields(v) {
-			if strings.EqualFold(m, mac) {
+			// A list prints as 'aa:..' 'bb:..'; Show only unquotes the ends.
+			if strings.EqualFold(strings.Trim(m, "'"), mac) {
 				sec := strings.TrimSuffix(k, ".mac")
 				return sec, all[sec+".ip"]
 			}
@@ -101,11 +102,20 @@ func SetStaticIP(mac, ip, name string) error {
 	if ip != "" {
 		all, _ := uci.Show("dhcp")
 		for k, v := range all {
-			if strings.HasSuffix(k, ".ip") && v == ip {
-				sec := strings.TrimSuffix(k, ".ip")
-				if !strings.EqualFold(strings.Fields(all[sec+".mac"] + " ")[0], mac) {
-					return errors.New("this address is already reserved for another device")
-				}
+			if !strings.HasSuffix(k, ".ip") || v != ip {
+				continue
+			}
+			// Only DHCP reservations (they carry a MAC) can clash.
+			macs := strings.Fields(all[strings.TrimSuffix(k, ".ip")+".mac"])
+			if len(macs) == 0 {
+				continue
+			}
+			mine := false
+			for _, m := range macs {
+				mine = mine || strings.EqualFold(strings.Trim(m, "'"), mac)
+			}
+			if !mine {
+				return errors.New("this address is already reserved for another device")
 			}
 		}
 	}
