@@ -66,6 +66,13 @@ func TestXrayAcceptsConfigs(t *testing.T) {
 	if bin == "" || assets == "" {
 		t.Skip("XRAY_BIN / XRAY_ASSETS not set")
 	}
+	// Configs depend on the running version (pins, nonIPQuery): use the real one.
+	old := XrayVersion
+	defer func() { XrayVersion = old }()
+	if DetectXrayVersion(bin) == "" {
+		t.Fatal("could not read the Xray version")
+	}
+	t.Logf("xray %v", XrayVersion)
 	dir := t.TempDir()
 	check := func(name string, data []byte) {
 		p := filepath.Join(dir, name+".json")

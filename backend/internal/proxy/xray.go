@@ -172,6 +172,25 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	rules = append(rules, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"})
 
 	sockDirect := map[string]any{"mark": OutMark}
+	// Browsers also ask for HTTPS/SVCB records. Xray 26 refuses them at once;
+	// older releases would drop them and make every new site wait ~5 s, so
+	// there they go straight to the line's resolver instead.
+	nonIPQuery, nonIPTarget := "reject", "1.1.1.1"
+	if XrayVersion[0] > 0 && XrayVersion[0] < 26 {
+		nonIPQuery = "skip"
+		for _, ip := range isp {
+			if !foreignResolver[ip] {
+				nonIPTarget = ip
+				break
+			}
+		}
+	}
+	// Sniffed names replace destination IPs (routeOnly false), so IP rules
+	// such as geoip:ir only match if Xray resolves the name for them.
+	routeStrategy := "AsIs"
+	if !o.KernelIran && o.IranMode != config.IranTunnel {
+		routeStrategy = "IPIfNonMatch"
+	}
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"api": map[string]any{"tag": "api", "listen": APIAddr, "services": []string{"HandlerService"}},
@@ -199,7 +218,7 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 			},
 			map[string]any{
 				"tag": "dns-in", "listen": "127.0.0.1", "port": DNSPort, "protocol": "dokodemo-door",
-				"settings": map[string]any{"address": "1.1.1.1", "port": 53, "network": "tcp,udp"},
+				"settings": map[string]any{"address": nonIPTarget, "port": 53, "network": "tcp,udp"},
 			},
 		},
 		"outbounds": []any{
@@ -209,9 +228,10 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 				"streamSettings": map[string]any{"sockopt": sockDirect}},
 			map[string]any{"tag": "block", "protocol": "blackhole"},
 			map[string]any{"tag": "dns-out", "protocol": "dns",
+				"settings":       map[string]any{"nonIPQuery": nonIPQuery},
 				"streamSettings": map[string]any{"sockopt": sockDirect}},
 		},
-		"routing": map[string]any{"domainStrategy": "AsIs", "rules": rules},
+		"routing": map[string]any{"domainStrategy": routeStrategy, "rules": rules},
 	}
 	outs := cfg["outbounds"].([]any)
 	cfg["outbounds"] = outs[1:]
@@ -230,7 +250,6 @@ func BuildTestConfig(servers []config.Server, basePort int, isp []string) ([]byt
 	outbounds := []any{map[string]any{"tag": "direct", "protocol": "freedom"}}
 	rules := []any{}
 	ports := make([]int, len(servers))
-	var hostnames []string
 	for i, s := range servers {
 		ob, err := ProxyOutbound(s)
 		if err != nil {
@@ -246,9 +265,6 @@ func BuildTestConfig(servers []config.Server, basePort int, isp []string) ([]byt
 		})
 		outbounds = append(outbounds, ob)
 		rules = append(rules, map[string]any{"type": "field", "inboundTag": []string{in}, "outboundTag": out})
-		if net.ParseIP(s.Address) == nil {
-			hostnames = append(hostnames, s.Address)
-		}
 	}
 	dnsServers := []any{}
 	for _, ip := range ispResolvers(isp) {

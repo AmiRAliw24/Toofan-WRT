@@ -522,6 +522,18 @@ func (m *Manager) StartTest(ids []string) bool {
 			}
 		}
 	}
+	if m.pending == nil {
+		m.pending = map[string]bool{}
+	}
+	if !busy {
+		// Mark them now so the panel's first poll already sees them pending.
+		cfg := m.Store.Get().Proxy
+		for _, s := range cfg.Servers {
+			if (ids == nil || contains(ids, s.ID)) && !IsOpenVPN(s) {
+				m.pending[s.ID] = true
+			}
+		}
+	}
 	m.mu.Unlock()
 	if busy {
 		return false

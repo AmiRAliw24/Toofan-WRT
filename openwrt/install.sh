@@ -165,7 +165,8 @@ if [ "$(uci -q get system.@system[0].hostname)" = "OpenWrt" ]; then
 	echo ToofanWrt > /proc/sys/kernel/hostname 2>/dev/null || true
 fi
 [ -f /etc/banner ] && [ ! -f /etc/banner.openwrt ] && cp /etc/banner /etc/banner.openwrt
-cp files/etc/banner /etc/banner 2>/dev/null || true
+LANIP0="$(uci -q get network.lan.ipaddr | cut -d/ -f1)"
+sed "s#http://192.168.1.1#http://${LANIP0:-192.168.1.1}#" files/etc/banner > /etc/banner 2>/dev/null || true
 
 # Software flow offloading skips nftables for established connections,
 # which would hide per-device speeds and break per-device limits.
