@@ -88,10 +88,28 @@ func TestXrayAcceptsConfigs(t *testing.T) {
 	wg, _ := ParseLinks(sampleWG)
 	_, ovpn, _ := ImportOpenVPN("remote vpn.example.com 1194\n<ca>\nx\n</ca>\n", "", "", "")
 	servers = append(servers, wg[0], ovpn)
+	// Releases after 26.3.27 refuse VLESS/Trojan without TLS: the panel runs
+	// those servers on the compat engine, so this binary must refuse them
+	// and everything else must load.
+	newer := XrayVersion[0] > 26 || (XrayVersion[0] == 26 && XrayVersion[1] > 3)
+	var main []config.Server
+	for _, s := range servers {
+		if newer && NeedsCompatEngine(s) {
+			data, _, _ := BuildConfig(BuildOpts{Server: s, IranMode: config.IranDirect})
+			p := filepath.Join(dir, "compat-only.json")
+			os.WriteFile(p, data, 0o600)
+			if exec.Command(bin, "run", "-test", "-c", p).Run() == nil {
+				t.Logf("%s %s is accepted by this release; the compat engine may no longer be needed", s.Protocol, s.Name)
+			}
+			continue
+		}
+		main = append(main, s)
+	}
+	servers = main
 	for i, s := range servers {
 		for j, mode := range []string{config.IranDirect, config.IranTunnel, config.IranBlock, config.IranBlock} {
 			kernel := j < 3 // last case: no kernel set, Xray matches geoip itself
-			data, _, err := BuildConfig(BuildOpts{Server: s, IranMode: mode, BlockAds: true, HaveIran: true,
+			data, _, err := BuildConfig(BuildOpts{Server: s, IranMode: mode, BlockAds: true, HaveIran: true, HaveGeoIP: true,
 				ISPDNS: []string{"192.168.1.1", "10.10.34.34"}, KernelIran: kernel, AllHosts: []string{"other.example.com"}})
 			if err != nil {
 				t.Fatal(err)
@@ -175,5 +193,21 @@ func TestBaseFingerprintIgnoresServer(t *testing.T) {
 	_, fc, _ := BuildConfig(BuildOpts{Server: b, IranMode: config.IranBlock, AllHosts: hosts})
 	if fc == fb {
 		t.Fatal("changing split must change the base config")
+	}
+}
+
+// Xray refuses to start when a rule needs a geo file that isn't there.
+func TestNoGeoIPRuleWithoutGeoIP(t *testing.T) {
+	s, _ := ParseLink(sampleLinks[0])
+	data, _, err := BuildConfig(BuildOpts{Server: s, IranMode: config.IranDirect, HaveIran: true, HaveGeoIP: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "geoip:ir") {
+		t.Fatal("geoip:ir used although geoip.dat is missing")
+	}
+	data, _, _ = BuildConfig(BuildOpts{Server: s, IranMode: config.IranDirect, HaveIran: true, HaveGeoIP: true})
+	if !strings.Contains(string(data), "geoip:ir") {
+		t.Fatal("geoip:ir missing although geoip.dat is installed and there is no kernel set")
 	}
 }

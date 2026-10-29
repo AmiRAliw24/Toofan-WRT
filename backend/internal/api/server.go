@@ -350,6 +350,18 @@ func (s *Server) proxySettings(w http.ResponseWriter, r *http.Request) {
 		boolField("guestProxy", &p.GuestProxy)
 		boolField("autoBest", &p.AutoBest)
 		boolField("subAutoUpdate", &p.SubAutoUpdate)
+		if v, ok := in["healthCheck"]; ok {
+			var on bool
+			json.Unmarshal(v, &on)
+			p.HealthPaused = !on
+		}
+		if v, ok := in["healthInterval"]; ok {
+			var sec int
+			if json.Unmarshal(v, &sec) != nil || sec < config.MinHealthInterval || sec > config.MaxHealthInterval {
+				return fmt.Errorf("health check interval must be %d–%d seconds", config.MinHealthInterval, config.MaxHealthInterval)
+			}
+			p.HealthInterval = sec
+		}
 		return nil
 	}))
 }

@@ -16,6 +16,24 @@ var (
 	IranDatPaths = []string{"/usr/share/xray/iran.dat", "/usr/share/v2ray/iran.dat"}
 )
 
+// AssetDir is the directory Xray loads geoip.dat/iran.dat from
+// (XRAY_LOCATION_ASSET): /usr/share/xray, or /usr/share/v2ray when only
+// that one has the files.
+func AssetDir() string {
+	for _, d := range []string{"/usr/share/xray", "/usr/share/v2ray"} {
+		if FirstExisting([]string{d + "/geoip.dat", d + "/iran.dat"}) != "" {
+			return d
+		}
+	}
+	return "/usr/share/xray"
+}
+
+// HasAsset reports whether Xray will find name in AssetDir. Rules that
+// reference a missing file make Xray refuse to start.
+func HasAsset(name string) bool {
+	return FirstExisting([]string{AssetDir() + "/" + name}) != ""
+}
+
 func FirstExisting(paths []string) string {
 	for _, p := range paths {
 		if st, err := os.Stat(p); err == nil && st.Size() > 0 {

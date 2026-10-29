@@ -54,7 +54,7 @@ type Core struct {
 	lastErr   string
 }
 
-func New(store *config.Store, xrayBin string) *Core {
+func New(store *config.Store, xrayBin, xrayCompatBin string) *Core {
 	c := &Core{
 		Store:   store,
 		Sampler: system.NewSampler(),
@@ -62,11 +62,12 @@ func New(store *config.Store, xrayBin string) *Core {
 		pending: make(chan struct{}, 1),
 	}
 	c.Proxy = &proxy.Manager{
-		Store:        store,
-		XrayBin:      xrayBin,
-		ISPDNS:       c.ispDNS,
-		OnModeChange: c.RequestApply,
-		KernelIran:   func() bool { return len(c.iranCIDRs) > 0 },
+		Store:         store,
+		XrayBin:       xrayBin,
+		XrayCompatBin: xrayCompatBin,
+		ISPDNS:        c.ispDNS,
+		OnModeChange:  c.RequestApply,
+		KernelIran:    func() bool { return len(c.iranCIDRs) > 0 },
 	}
 	c.Proxy.Init()
 	c.Quality = NewQuality(c)

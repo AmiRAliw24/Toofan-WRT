@@ -53,11 +53,14 @@ type Status struct {
 }
 
 type Manager struct {
-	Store        *config.Store
-	XrayBin      string
-	ISPDNS       func() []string
-	OnModeChange func()      // firewall + DNS follow the mode
-	KernelIran   func() bool // Iranian IPs already bypass Xray in nftables
+	Store   *config.Store
+	XrayBin string
+	// XrayCompatBin is an older Xray (26.3.27) kept for servers the main
+	// engine refuses (NeedsCompatEngine); "" = none installed.
+	XrayCompatBin string
+	ISPDNS        func() []string
+	OnModeChange  func()      // firewall + DNS follow the mode
+	KernelIran    func() bool // Iranian IPs already bypass Xray in nftables
 
 	tester Tester
 
@@ -80,6 +83,7 @@ type Manager struct {
 	exited      chan struct{}
 	runningFP   string
 	runningBase string // fingerprint without the proxy outbound
+	runningBin  string // which Xray binary is running
 	ovpn        *ovpnProc
 
 	lastPreferredTry time.Time
@@ -90,7 +94,7 @@ type Manager struct {
 }
 
 func (m *Manager) Init() {
-	m.tester.XrayBin = m.XrayBin
+	m.tester.XrayBin, m.tester.CompatBin = m.XrayBin, m.XrayCompatBin
 	if v := DetectXrayVersion(m.XrayBin); v != "" {
 		env.Logf("xray %s", v)
 	}
@@ -183,8 +187,10 @@ func (m *Manager) Kick() {
 }
 
 // Run is the watchdog loop.
+// It ticks every 5 s so a crashed engine comes back quickly; the tunnel
+// probe runs on its own, configurable interval (healthDue).
 func (m *Manager) Run() {
-	t := time.NewTicker(15 * time.Second)
+	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	m.reconcile(true)
 	for {
@@ -252,7 +258,9 @@ func (m *Manager) reconcile(configChanged bool) {
 		return
 	}
 
+	started := false
 	if configChanged || !running || active != want {
+		started = true
 		if !running && active != "" && !configChanged {
 			if m.recordCrash() {
 				m.stopProc()
@@ -279,7 +287,30 @@ func (m *Manager) reconcile(configChanged bool) {
 		}
 	}
 
-	m.healthCheck(cfg)
+	// Right after a (re)start the tunnel is always checked once, so the mode
+	// reaches Connected (and DNS moves into the tunnel) even with the
+	// periodic check off.
+	if started || m.healthDue(cfg) {
+		m.healthCheck(cfg)
+	}
+}
+
+func (m *Manager) healthDue(cfg config.Proxy) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.mode == ModeConnecting {
+		return true
+	}
+	// Paused means no checks while healthy; a tunnel that already failed
+	// keeps being checked so it can recover or fail over.
+	if cfg.HealthPaused && m.mode != ModeDegraded {
+		return false
+	}
+	iv := time.Duration(cfg.HealthInterval) * time.Second
+	if iv <= 0 {
+		iv = config.DefaultHealthInterval * time.Second
+	}
+	return time.Since(m.checkedAt) >= iv-time.Second
 }
 
 func (m *Manager) healthCheck(cfg config.Proxy) {
@@ -583,7 +614,8 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 		BlockAds:   full.DNS.BlockAds,
 		ISPDNS:     m.isp(),
 		SecureDNS:  SecureDNSFor(full.DNS),
-		HaveIran:   geo.FirstExisting(geo.IranDatPaths) != "",
+		HaveIran:   geo.HasAsset("iran.dat"),
+		HaveGeoIP:  geo.HasAsset("geoip.dat"),
 		KernelIran: m.KernelIran != nil && m.KernelIran(),
 		AllHosts:   hosts,
 	}
@@ -591,11 +623,13 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	if err != nil {
 		return err
 	}
+	bin := m.binFor(*srv)
 	fp := fmt.Sprintf("%x", sha1.Sum(data))
 	m.mu.Lock()
 	alive := m.procAlive()
-	same := !force && alive && m.activeID == id && m.runningFP == fp
-	swappable := !force && alive && m.runningBase == baseFP && m.activeID != id
+	sameBin := m.runningBin == bin
+	same := !force && alive && sameBin && m.activeID == id && m.runningFP == fp
+	swappable := !force && alive && sameBin && m.runningBase == baseFP && m.activeID != id
 	m.mu.Unlock()
 	if same {
 		return nil
@@ -615,7 +649,7 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 	}
 	m.stopProc()
 	m.mu.Lock()
-	m.runningFP, m.runningBase, m.activeID = fp, baseFP, id
+	m.runningFP, m.runningBase, m.activeID, m.runningBin = fp, baseFP, id, bin
 	m.mu.Unlock()
 	if env.Mock {
 		m.mu.Lock()
@@ -629,8 +663,8 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, m.XrayBin, "run", "-c", path)
-	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET=/usr/share/xray")
+	cmd := exec.CommandContext(ctx, bin, "run", "-c", path)
+	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+geo.AssetDir())
 	tail := &tailBuffer{max: 16384}
 	cmd.Stdout, cmd.Stderr = tail, tail
 	if err := cmd.Start(); err != nil {
@@ -681,8 +715,11 @@ func (m *Manager) swapOutbound(srv config.Server) error {
 		return err
 	}
 	server := "--server=" + APIAddr
-	env.Run(15*time.Second, m.XrayBin, "api", "rmo", server, "proxy")
-	if out, err := env.Run(15*time.Second, m.XrayBin, "api", "ado", server, path); err != nil {
+	m.mu.Lock()
+	bin := m.runningBin
+	m.mu.Unlock()
+	env.Run(15*time.Second, bin, "api", "rmo", server, "proxy")
+	if out, err := env.Run(15*time.Second, bin, "api", "ado", server, path); err != nil {
 		return fmt.Errorf("%v %s", err, lastLine(out))
 	}
 	// Keep the on-disk config in sync for the next restart.
@@ -699,7 +736,7 @@ func (m *Manager) lastOpts(srv config.Server) BuildOpts {
 		hosts = append(hosts, s.Address)
 	}
 	return BuildOpts{Server: srv, IranMode: cfg.Proxy.IranMode, BlockAds: cfg.DNS.BlockAds, ISPDNS: m.isp(),
-		SecureDNS: SecureDNSFor(cfg.DNS), HaveIran: geo.FirstExisting(geo.IranDatPaths) != "",
+		SecureDNS: SecureDNSFor(cfg.DNS), HaveIran: geo.HasAsset("iran.dat"), HaveGeoIP: geo.HasAsset("geoip.dat"),
 		KernelIran: m.KernelIran != nil && m.KernelIran(), AllHosts: hosts}
 }
 
@@ -773,4 +810,13 @@ func contains(xs []string, x string) bool {
 		}
 	}
 	return false
+}
+
+// binFor picks the Xray binary for a server: the main engine unless only
+// the compat one accepts it.
+func (m *Manager) binFor(s config.Server) string {
+	if m.XrayCompatBin != "" && NeedsCompatEngine(s) {
+		return m.XrayCompatBin
+	}
+	return m.XrayBin
 }
