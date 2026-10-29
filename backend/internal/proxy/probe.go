@@ -20,6 +20,7 @@ import (
 
 	"toofanwrt/internal/config"
 	"toofanwrt/internal/env"
+	"toofanwrt/internal/geo"
 )
 
 // Ping is measured against Google, falling back to Cloudflare. Plain HTTP:
@@ -101,7 +102,8 @@ type TestResult struct {
 // changes and stops itself when idle, so a test costs one round trip per
 // server instead of an Xray start.
 type Tester struct {
-	XrayBin string
+	XrayBin   string
+	CompatBin string // used when a loaded server needs it (NeedsCompatEngine)
 
 	mu      sync.Mutex // one test at a time
 	procMu  sync.Mutex
@@ -237,14 +239,23 @@ func (t *Tester) ensure(servers []config.Server, isp []string) (map[string]int, 
 	if first == 0 {
 		return ports, perrs, nil // nothing Xray could load
 	}
+	bin := t.XrayBin
+	if t.CompatBin != "" {
+		for _, s := range servers {
+			if NeedsCompatEngine(s) {
+				bin = t.CompatBin // it runs every server type
+				break
+			}
+		}
+	}
 	path := filepath.Join(env.DataDir, "xray-test.json")
 	os.MkdirAll(env.DataDir, 0o700)
 	if err := os.WriteFile(path, cfg, 0o600); err != nil {
 		return nil, nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, t.XrayBin, "run", "-c", path)
-	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET=/usr/share/xray")
+	cmd := exec.CommandContext(ctx, bin, "run", "-c", path)
+	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+geo.AssetDir())
 	tail := &tailBuffer{max: 4096}
 	cmd.Stdout, cmd.Stderr = tail, tail
 	if err := cmd.Start(); err != nil {

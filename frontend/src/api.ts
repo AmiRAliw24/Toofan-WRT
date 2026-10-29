@@ -127,6 +127,8 @@ export interface ProxyConfig {
   blockIPv6: boolean;
   guestProxy: boolean;
   autoBest: boolean;
+  healthPaused?: boolean;
+  healthInterval?: number; // seconds
   subAutoUpdate: boolean;
 }
 

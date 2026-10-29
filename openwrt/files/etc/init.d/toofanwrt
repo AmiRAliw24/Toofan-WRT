@@ -15,9 +15,12 @@ start_service() {
 	local xray
 	xray="$(uci -q get toofanwrt.main.xray)"
 	[ -x "$xray" ] || xray=/usr/bin/xray
+	local compat
+	compat="$(uci -q get toofanwrt.main.xray_compat)"
+	[ -x "$compat" ] || compat=""
 
 	procd_open_instance
-	procd_set_param command "$PROG" -listen "$listen" -config /etc/toofanwrt/config.json -xray "$xray"
+	procd_set_param command "$PROG" -listen "$listen" -config /etc/toofanwrt/config.json -xray "$xray" -xray-compat "$compat"
 	procd_set_param respawn 3600 5 0
 	procd_set_param stdout 1
 	procd_set_param stderr 1

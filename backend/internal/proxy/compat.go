@@ -8,8 +8,10 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+	"toofanwrt/internal/config"
 
 	"toofanwrt/internal/env"
 )
@@ -71,6 +73,24 @@ func certPin(host string, port int, sni string) (string, error) {
 	pinCache[key] = pin
 	pinMu.Unlock()
 	return pin, nil
+}
+
+// NeedsCompatEngine reports whether a server only works on the compat
+// engine: Xray releases after 26.3.27 refuse VLESS and Trojan without TLS
+// to a public address.
+func NeedsCompatEngine(s config.Server) bool {
+	switch strings.ToLower(s.Protocol) {
+	case "vless", "trojan":
+	default:
+		return false
+	}
+	if sec := strings.ToLower(s.Security); sec != "" && sec != "none" {
+		return false
+	}
+	if ip := net.ParseIP(s.Address); ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
+		return false
+	}
+	return true
 }
 
 // adaptOutbound rewrites settings that the running Xray version no longer

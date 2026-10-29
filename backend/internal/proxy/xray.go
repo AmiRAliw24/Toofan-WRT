@@ -32,6 +32,7 @@ type BuildOpts struct {
 	ISPDNS    []string // resolvers of the upstream line, used for Iranian names
 	SecureDNS []string // resolvers used through the tunnel
 	HaveIran  bool     // iran.dat is installed
+	HaveGeoIP bool     // geoip.dat is installed (for geoip:ir without the kernel set)
 	// KernelIran: Iranian IP ranges are already excluded in nftables, so Xray
 	// doesn't need to load the 20+ MB geoip.dat (slow on router CPUs).
 	KernelIran bool
@@ -165,12 +166,25 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 			dom = append(dom, assetIran...)
 		}
 		rules = append(rules, map[string]any{"type": "field", "domain": dom, "outboundTag": to})
-		if !o.KernelIran {
+		if !o.KernelIran && o.HaveGeoIP {
 			rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:ir"}, "outboundTag": to})
 		}
 	}
 	rules = append(rules, map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"})
 
+	dnsCfg := map[string]any{
+		"tag":           "dns-internal",
+		"queryStrategy": "UseIPv4",
+		"servers":       dnsServers,
+	}
+	if XrayVersion[0] >= 26 {
+		// Answer repeat lookups from cache at once, even just after expiry
+		// (refreshed in the background), and race the resolvers instead of
+		// trying them one by one: pages start loading sooner.
+		dnsCfg["serveStale"] = true
+		dnsCfg["serveExpiredTTL"] = 86400
+		dnsCfg["enableParallelQuery"] = true
+	}
 	sockDirect := map[string]any{"mark": OutMark}
 	// Browsers also ask for HTTPS/SVCB records. Xray 26 refuses them at once;
 	// older releases would drop them and make every new site wait ~5 s, so
@@ -188,17 +202,13 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	// Sniffed names replace destination IPs (routeOnly false), so IP rules
 	// such as geoip:ir only match if Xray resolves the name for them.
 	routeStrategy := "AsIs"
-	if !o.KernelIran && o.IranMode != config.IranTunnel {
+	if !o.KernelIran && o.HaveGeoIP && o.IranMode != config.IranTunnel {
 		routeStrategy = "IPIfNonMatch"
 	}
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"api": map[string]any{"tag": "api", "listen": APIAddr, "services": []string{"HandlerService"}},
-		"dns": map[string]any{
-			"tag":           "dns-internal",
-			"queryStrategy": "UseIPv4",
-			"servers":       dnsServers,
-		},
+		"dns": dnsCfg,
 		"inbounds": []any{
 			map[string]any{
 				"tag": "tproxy", "port": TProxyPort, "protocol": "dokodemo-door",

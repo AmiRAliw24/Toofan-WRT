@@ -125,7 +125,10 @@ func parseWireGuard(link string) (*XOutbound, string, error) {
 		p["keepAlive"] = ka
 	}
 	settings := map[string]any{
-		"secretKey":      priv,
+		"secretKey": priv,
+		// In-process WireGuard (gVisor). Newer Xray otherwise creates a
+		// kernel interface, which clashes with the panel's own routing.
+		"noKernelTun":    true,
 		"address":        addrs,
 		"peers":          []any{p},
 		"domainStrategy": "ForceIPv4",

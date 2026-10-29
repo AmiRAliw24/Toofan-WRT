@@ -81,22 +81,31 @@ fi
 [ -x /etc/init.d/miniupnpd ] && [ "$(uci -q get upnpd.config.enabled)" != "1" ] && /etc/init.d/miniupnpd disable 2>/dev/null || true
 
 command -v xray >/dev/null || die "xray binary not found after install"
-# Prefer the bundled, newer Xray when it runs on this router; the package's
-# /usr/bin/xray stays as the fallback.
-XRAY=/usr/bin/xray
-case "$ARCH" in armv7l) XBIN=bin/xray-armv7 ;; *) XBIN="" ;; esac
-if [ -n "$XBIN" ] && [ -f "$XBIN" ]; then
+# Prefer the bundled Xray when it runs on this router; the package's
+# /usr/bin/xray stays as the fallback. Two bundled engines: the newest one,
+# and 26.3.27 for servers newer releases refuse (VLESS/Trojan without TLS).
+install_xray() { # <bundled file> <name>: prints the installed path on success
+	[ -f "$1" ] || return 1
 	mkdir -p /usr/libexec/toofanwrt
-	cp "$XBIN" /usr/libexec/toofanwrt/xray.new && chmod 755 /usr/libexec/toofanwrt/xray.new
-	if /usr/libexec/toofanwrt/xray.new version >/dev/null 2>&1; then
-		mv -f /usr/libexec/toofanwrt/xray.new /usr/libexec/toofanwrt/xray
-		XRAY=/usr/libexec/toofanwrt/xray
-	else
-		rm -f /usr/libexec/toofanwrt/xray.new
-		say "bundled Xray does not run here; using the system package"
+	cp "$1" "/usr/libexec/toofanwrt/$2.new" && chmod 755 "/usr/libexec/toofanwrt/$2.new"
+	if "/usr/libexec/toofanwrt/$2.new" version >/dev/null 2>&1; then
+		mv -f "/usr/libexec/toofanwrt/$2.new" "/usr/libexec/toofanwrt/$2"
+		echo "/usr/libexec/toofanwrt/$2"
+		return 0
 	fi
-fi
+	rm -f "/usr/libexec/toofanwrt/$2.new"
+	return 1
+}
+XRAY=/usr/bin/xray
+XRAY_COMPAT=""
+case "$ARCH" in
+	armv7l)
+		XRAY="$(install_xray bin/xray-armv7 xray)" || { XRAY=/usr/bin/xray; say "bundled Xray does not run here; using the system package"; }
+		XRAY_COMPAT="$(install_xray bin/xray-compat-armv7 xray-compat)" || XRAY_COMPAT=""
+		;;
+esac
 say "xray: $($XRAY version 2>/dev/null | head -1)"
+[ -n "$XRAY_COMPAT" ] && say "xray (compat, for VLESS/Trojan without TLS): $($XRAY_COMPAT version 2>/dev/null | head -1)"
 
 # The panel used to be called Separ. Its settings and data are copied over
 # and the old service is stopped; the old files are only deleted once the
@@ -145,6 +154,7 @@ uci -q get toofanwrt.main >/dev/null || uci set toofanwrt.main=toofanwrt
 # for old bookmarks). LuCI is removed below once the panel answers.
 uci set toofanwrt.main.listen=':80,:8080'
 uci set toofanwrt.main.xray="$XRAY"
+uci set toofanwrt.main.xray_compat="$XRAY_COMPAT"
 uci commit toofanwrt
 if [ -x /etc/init.d/uhttpd ]; then
 	say "making ToofanWrt the main interface (LuCI moved out of the way)"

@@ -59,20 +59,24 @@ func (p *OpenVPNProfiles) UnmarshalJSON(b []byte) error {
 }
 
 type Proxy struct {
-	Enabled       bool            `json:"enabled"`
-	Engine        string          `json:"engine"` // xray | wireguard | openvpn
-	Servers       []Server        `json:"servers"`
-	Subscriptions []Subscription  `json:"subscriptions"`
-	ActiveID      string          `json:"activeId"`
-	PreferredID   string          `json:"preferredId"`
-	SplitIran     bool            `json:"splitIran"` // kept in sync with IranMode for older readers
-	IranMode      string          `json:"iranMode"`  // direct | tunnel | block
-	KillSwitch    bool            `json:"killSwitch"`
-	BlockIPv6     bool            `json:"blockIPv6"`
-	GuestProxy    bool            `json:"guestProxy"`
-	AutoBest      bool            `json:"autoBest"`
-	SubAutoUpdate bool            `json:"subAutoUpdate"`
-	OpenVPN       OpenVPNProfiles `json:"openvpn"`
+	Enabled       bool           `json:"enabled"`
+	Engine        string         `json:"engine"` // xray | wireguard | openvpn
+	Servers       []Server       `json:"servers"`
+	Subscriptions []Subscription `json:"subscriptions"`
+	ActiveID      string         `json:"activeId"`
+	PreferredID   string         `json:"preferredId"`
+	SplitIran     bool           `json:"splitIran"` // kept in sync with IranMode for older readers
+	IranMode      string         `json:"iranMode"`  // direct | tunnel | block
+	KillSwitch    bool           `json:"killSwitch"`
+	BlockIPv6     bool           `json:"blockIPv6"`
+	GuestProxy    bool           `json:"guestProxy"`
+	AutoBest      bool           `json:"autoBest"`
+	SubAutoUpdate bool           `json:"subAutoUpdate"`
+	// Periodic tunnel health check (watchdog). Off = no periodic probes, so
+	// no automatic failover; a crashed engine is still restarted.
+	HealthPaused   bool            `json:"healthPaused"`
+	HealthInterval int             `json:"healthInterval"` // seconds
+	OpenVPN        OpenVPNProfiles `json:"openvpn"`
 }
 
 type Schedule struct {
@@ -274,7 +278,17 @@ func normalize(c *Config) {
 		}
 	}
 	c.Proxy.SplitIran = c.Proxy.IranMode == IranDirect
+	if c.Proxy.HealthInterval < MinHealthInterval || c.Proxy.HealthInterval > MaxHealthInterval {
+		c.Proxy.HealthInterval = DefaultHealthInterval
+	}
 }
+
+// Health check interval bounds, in seconds.
+const (
+	DefaultHealthInterval = 15
+	MinHealthInterval     = 10
+	MaxHealthInterval     = 600
+)
 
 // What happens to traffic for Iranian sites while the tunnel is on.
 const (

@@ -30,6 +30,7 @@ func main() {
 	listen := flag.String("listen", ":8080", "HTTP listen addresses, comma separated")
 	cfgPath := flag.String("config", "/etc/toofanwrt/config.json", "config file")
 	xray := flag.String("xray", "/usr/bin/xray", "xray binary")
+	xrayCompat := flag.String("xray-compat", "", "older xray for servers the main one refuses (VLESS/Trojan without TLS)")
 	webDir := flag.String("web", "", "serve the UI from this directory instead of the embedded copy")
 	mock := flag.Bool("mock", false, "simulate a router (for development)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -47,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-	c := core.New(store, *xray)
+	c := core.New(store, *xray, *xrayCompat)
 	addrs := strings.Split(*listen, ",")
 	for _, a := range addrs {
 		if _, port, err := net.SplitHostPort(strings.TrimSpace(a)); err == nil {

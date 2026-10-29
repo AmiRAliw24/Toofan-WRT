@@ -435,8 +435,9 @@ function Protection({ d, reload }: { d: ProxyResp; reload: () => void }) {
       </Card>
       <Card>
         <CardHead icon={<Timer size={20} />} tone="info" title={L('نگهبان اتصال', 'Connection watchdog')}
-          sub={L('هر ۱۵ ثانیه با ترافیک واقعی سلامت تونل را می‌سنجد و خراب‌ها را خودش ترمیم می‌کند', 'Checks the tunnel with real traffic every 15 s and repairs it automatically')} />
+          sub={L('با ترافیک واقعی سلامت تونل را می‌سنجد و خراب‌ها را خودش ترمیم می‌کند', 'Checks the tunnel with real traffic and repairs it automatically')} />
         <div class="card-body" style="padding-block:0">
+          <HealthSettings c={c} reload={reload} />
           <Setting title={L('انتخاب خودکار سریع‌ترین سرور', 'Auto-pick the fastest server')}
             desc={L('هر ۱۵ دقیقه می‌سنجد و فقط وقتی سروری به‌وضوح سریع‌تر باشد جابه‌جا می‌شود', 'Re-measures every 15 min and only switches for a clear win')}>
             <Toggle on={c.autoBest} onChange={(v) => set('autoBest', v)} />
@@ -453,6 +454,38 @@ function Protection({ d, reload }: { d: ProxyResp; reload: () => void }) {
         </div>
       </Card>
     </div>
+  );
+}
+
+const healthSteps = [10, 15, 30, 60, 120, 300];
+
+function HealthSettings({ c, reload }: { c: ProxyConfig; reload: () => void }) {
+  const on = !c.healthPaused;
+  const iv = c.healthInterval || 15;
+  const label = (s: number) => (s < 60 ? L(`${num(s)} ثانیه`, `${s} s`) : L(`${num(s / 60)} دقیقه`, `${s / 60} min`));
+  const save = async (body: Record<string, unknown>) => {
+    await run(() => post('/proxy/settings', body), L('ذخیره شد', 'Saved'));
+    reload();
+  };
+  return (
+    <>
+      <Setting title={L('بررسی دوره‌ای سلامت تونل', 'Periodic tunnel check')}
+        desc={on
+          ? L(`هر ${label(iv)} یک درخواست کوچک از داخل تونل فرستاده می‌شود؛ اگر جواب نیامد، خودش وصل می‌کند یا سرور را عوض می‌کند.`, `Every ${label(iv)} a small request goes through the tunnel; if it fails, it reconnects or switches server.`)
+          : L('خاموش: تونل فقط بعد از هر اتصال یک بار بررسی می‌شود و جابه‌جایی خودکار سرور هنگام قطعی انجام نمی‌شود. اگر موتور از کار بیفتد، باز هم خودکار روشن می‌شود.', 'Off: the tunnel is checked once after each connect; no automatic server switch on outages. A crashed engine is still restarted.')}>
+        <Toggle on={on} onChange={(v) => save({ healthCheck: v })} />
+      </Setting>
+      {on && (
+        <div style="padding:4px 0 14px">
+          <div class="small muted" style="margin-bottom:8px">{L('فاصلهٔ بررسی', 'Check every')}</div>
+          <Seg value={String(iv)} onChange={(v: string) => save({ healthInterval: Number(v) })}
+            items={healthSteps.map((s) => ({ id: String(s), label: label(s) }))} />
+          <div class="tiny faint" style="margin-top:6px">
+            {L('کوتاه‌تر یعنی تشخیص سریع‌تر قطعی؛ بلندتر یعنی مصرف حجم و پردازش کمتر.', 'Shorter = faster outage detection; longer = less data and CPU.')}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

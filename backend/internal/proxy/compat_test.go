@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+
+	"toofanwrt/internal/config"
 )
 
 func TestAllowInsecureBecomesPin(t *testing.T) {
@@ -42,4 +44,24 @@ func TestAllowInsecureBecomesPin(t *testing.T) {
 		t.Fatal("allowInsecure left in place")
 	}
 	_ = port
+}
+
+func TestNeedsCompatEngine(t *testing.T) {
+	for _, c := range []struct {
+		s    config.Server
+		want bool
+	}{
+		{config.Server{Protocol: "vless", Security: "none", Address: "de.example.com"}, true},
+		{config.Server{Protocol: "vless", Security: "", Address: "1.2.3.4"}, true},
+		{config.Server{Protocol: "trojan", Security: "none", Address: "x.example.com"}, true},
+		{config.Server{Protocol: "vless", Security: "tls", Address: "de.example.com"}, false},
+		{config.Server{Protocol: "vless", Security: "reality", Address: "de.example.com"}, false},
+		{config.Server{Protocol: "vless", Security: "none", Address: "192.168.1.20"}, false},
+		{config.Server{Protocol: "vmess", Security: "none", Address: "de.example.com"}, false},
+		{config.Server{Protocol: "shadowsocks", Address: "de.example.com"}, false},
+	} {
+		if got := NeedsCompatEngine(c.s); got != c.want {
+			t.Errorf("NeedsCompatEngine(%+v) = %v, want %v", c.s, got, c.want)
+		}
+	}
 }

@@ -6,7 +6,9 @@ gaming, LED. Replaces LuCI as the router's only web UI (port 80). The owner writ
 reply in Persian.
 
 ## Layout
-- `backend/` Go, stdlib only, module `toofanwrt`. `main.go` flags: `-listen -config -xray -web -mock -version`.
+- `backend/` Go, stdlib only, module `toofanwrt`. `main.go` flags: `-listen -config -xray -xray-compat -web -mock -version`.
+  Two Xray engines: main (newest, `build.sh` XRAY_VERSION) and compat 26.3.27 for VLESS/Trojan without TLS
+  (`NeedsCompatEngine`); the tester uses compat when any loaded server needs it.
   `internal/`: `api` (HTTP routes), `core` (wires everything, firewall/DNS apply loop, diagnostics,
   speed test), `proxy` (Xray config, watchdog, server tester, links/subs), `fw` (nftables),
   `dnsctl` (dnsmasq drop-in), `devices`, `wifi`, `gaming`, `led`, `luci`, `update`, `sitelog`,
