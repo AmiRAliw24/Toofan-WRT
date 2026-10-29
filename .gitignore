@@ -3,3 +3,4 @@ dist/
 backend/web/dist/*
 !backend/web/dist/index.html
 openwrt/pkgs/
+graphify-out/
