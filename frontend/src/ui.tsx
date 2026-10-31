@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Eye, EyeOff, X } from 'lucide-preact';
-import { L, lang, num } from './i18n';
+import { L, lang, num, dateLocale } from './i18n';
 
 // ---- toasts ----
 interface Toast { id: number; text: string; error?: boolean }
@@ -347,7 +347,7 @@ export function LineChart(p: { points: { t: number; v: number }[]; color?: strin
     setHover(Math.max(0, Math.min(pts.length - 1, i)));
   };
   const hp = hover !== null ? pts[hover] : null;
-  const fmtTime = (t: number) => new Date(t * 1000).toLocaleString(lang.value === 'fa' ? 'fa-IR' : 'en-GB', { hour: '2-digit', minute: '2-digit', day: pts[pts.length - 1].t - pts[0].t > 86400 * 1.5 ? 'numeric' : undefined, month: pts[pts.length - 1].t - pts[0].t > 86400 * 1.5 ? 'short' : undefined });
+  const fmtTime = (t: number) => new Date(t * 1000).toLocaleString(dateLocale(), { hour: '2-digit', minute: '2-digit', day: pts[pts.length - 1].t - pts[0].t > 86400 * 1.5 ? 'numeric' : undefined, month: pts[pts.length - 1].t - pts[0].t > 86400 * 1.5 ? 'short' : undefined });
   const lastPt = geo.last >= 0 ? pts[geo.last] : null;
   return (
     <div class="chart-wrap">

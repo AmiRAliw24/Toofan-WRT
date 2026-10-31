@@ -29,6 +29,28 @@ function sensorName(n: string) {
   return n;
 }
 
+// Temperature on a 0–100 °C bar: the radios and SoC throttle around 100 °C.
+function TempCard({ s }: { s: SystemStats }) {
+  const t = s.tempC || 0;
+  const level = t >= 80 ? 'hot' : t >= 65 ? 'warm' : 'ok';
+  const color = level === 'hot' ? 'var(--danger-strong)' : level === 'warm' ? 'var(--warn)' : undefined;
+  return (
+    <Card class="stat">
+      <div class="stat-label"><Thermometer size={16} />{L('دما', 'Temperature')}
+        {t > 0 && <span class={'badge temp-badge ' + (level === 'hot' ? 'danger' : level === 'warm' ? 'warn' : 'ok')}>
+          {level === 'hot' ? L('داغ', 'Hot') : level === 'warm' ? L('گرم', 'Warm') : L('عادی', 'Normal')}</span>}
+      </div>
+      <div class="stat-value">{t > 0 ? <span dir="ltr">{num(t, 1)}<span class="unit"> °C</span></span> : '—'}</div>
+      <div class="stat-sub truncate" title={(s.temps || []).map((x) => `${sensorName(x.name)}: ${x.c} °C`).join('\n')}>
+        {t > 0
+          ? <>{sensorName(s.tempSensor || '')}{(s.temps?.length || 0) > 1 ? L(` · ${s.temps!.length} حسگر`, ` · ${s.temps!.length} sensors`) : ''}</>
+          : L('حسگر دما پیدا نشد', 'No temperature sensor found')}
+      </div>
+      <Meter value={t} color={color} />
+    </Card>
+  );
+}
+
 export function System() {
   const { data } = usePoll<SysResp>('/system', 3000);
   const [cur, setCur] = useState('');
@@ -50,24 +72,14 @@ export function System() {
           total={`${bytes((s.memTotalKb - s.memAvailKb) * 1024)} / ${bytes(s.memTotalKb * 1024)}`} />
         <Res icon={<HardDrive size={16} />} label={L('فضای ذخیره', 'Storage')} used={diskUsed} value={diskUsed}
           total={`${bytes((s.diskTotalKb - s.diskFreeKb) * 1024)} / ${bytes(s.diskTotalKb * 1024)}`} />
-        <Card class="stat">
-          <div class="stat-label"><Thermometer size={16} />{L('دما', 'Temperature')}</div>
-          <div class="stat-value ltr" style="text-align:start">
-            {s.tempC ? <>{num(s.tempC, 1)}<span class="unit"> °C</span></> : '—'}
-          </div>
-          <div class="stat-sub" title={(s.temps || []).map((t) => `${sensorName(t.name)}: ${t.c} °C`).join('\n')}>
-            {s.tempC
-              ? <>{sensorName(s.tempSensor || '')}{(s.temps?.length || 0) > 1 ? L(` · ${num(s.temps!.length)} حسگر`, ` · ${s.temps!.length} sensors`) : ''}</>
-              : L('حسگر دما پیدا نشد', 'No temperature sensor found')}
-          </div>
-          <div class="stat-sub">{L('روشن از ', 'Up ')}{duration(s.uptimeSec)}</div>
-        </Card>
+        <TempCard s={s} />
       </div>
       <div class="grid g2">
         <Card>
           <CardHead icon={<Router size={20} />} title={L('اطلاعات دستگاه', 'Device info')} />
           <div class="card-body" style="padding-block:4px">
             <div class="kv"><span class="k">{L('مدل', 'Model')}</span><span class="v">{s.model}</span></div>
+            <div class="kv"><span class="k">{L('روشن از', 'Uptime')}</span><span class="v">{duration(s.uptimeSec)}</span></div>
             <div class="kv"><span class="k">{L('سیستم‌عامل', 'Firmware')}</span><span class="v ltr">{s.firmware}</span></div>
             <div class="kv"><span class="k">{L('کرنل', 'Kernel')}</span><span class="v mono">{s.kernel}</span></div>
             <div class="kv"><span class="k">{L('نسخهٔ پنل', 'Panel version')}</span><span class="v mono">{data.version}</span></div>

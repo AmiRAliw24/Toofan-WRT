@@ -6,7 +6,7 @@ import {
   Settings, Shield, Smartphone, Tornado, Wifi, Lock, Gamepad2,
 } from 'lucide-preact';
 import { authed, get, post, type Overview } from './api';
-import { L, lang, setLang, num, ago, digits } from './i18n';
+import { L, lang, setLang, num, ago, dateLocale } from './i18n';
 import { Btn, ConfirmHost, Modal, Toasts } from './ui';
 import { Home } from './pages/Home';
 import { Internet } from './pages/Internet';
@@ -46,11 +46,16 @@ export function onRefresh(f: () => void) {
 
 // ---- theme ----
 type Theme = 'light' | 'dawn' | 'dark' | 'hacker';
-const themes: { id: Theme; name: () => string; desc: () => string; swatch: string[] }[] = [
-  { id: 'light', name: () => L('روشن', 'Light'), desc: () => L('فیروزه‌ای و تمیز', 'Clean teal'), swatch: ['#f2f6f6', '#0d8a7f', '#6366f1'] },
-  { id: 'dawn', name: () => L('سپیده‌دم', 'Dawn'), desc: () => L('کاغذی گرم با نیلی', 'Warm paper, indigo'), swatch: ['#f6f1e8', '#5b45e0', '#d4760a'] },
-  { id: 'dark', name: () => L('تیره', 'Dark'), desc: () => L('تیرهٔ عمیق با درخشش ملایم', 'Deep dark with a soft glow'), swatch: ['#091213', '#2cc3b1', '#7376f2'] },
-  { id: 'hacker', name: () => L('هکری', 'Hacker'), desc: () => L('ترمینال سبز فسفری', 'Phosphor terminal'), swatch: ['#030805', '#39ff7a', '#2f8fe0'] },
+type Preview = { bg: string; elev: string; side: string; border: string; text: string; muted: string; primary: string; second: string };
+const themes: { id: Theme; name: () => string; desc: () => string; p: Preview }[] = [
+  { id: 'light', name: () => L('روشن', 'Light'), desc: () => L('فیروزه‌ای، تمیز و روشن', 'Clean and bright teal'),
+    p: { bg: '#f2f6f6', elev: '#ffffff', side: '#f8fbfb', border: '#dbe4e4', text: '#0d1a1b', muted: '#c3d0d0', primary: '#0d8a7f', second: '#6366f1' } },
+  { id: 'dawn', name: () => L('سپیده‌دم', 'Dawn'), desc: () => L('کاغذی گرم با نیلی و کهربایی', 'Warm paper, indigo and amber'),
+    p: { bg: '#f6f1e8', elev: '#fffdf9', side: '#fbf7f0', border: '#e5ddcd', text: '#1f1a14', muted: '#d3c8b4', primary: '#5b45e0', second: '#d4760a' } },
+  { id: 'dark', name: () => L('تیره', 'Dark'), desc: () => L('تیرهٔ عمیق با درخشش ملایم', 'Deep dark with a soft glow'),
+    p: { bg: '#091213', elev: '#0f1b1d', side: '#0c1718', border: '#1c2c2e', text: '#e4eeee', muted: '#2a3e41', primary: '#2cc3b1', second: '#7376f2' } },
+  { id: 'hacker', name: () => L('هکری', 'Hacker'), desc: () => L('ترمینال سبز فسفری', 'Phosphor-green terminal'),
+    p: { bg: '#030805', elev: '#07110b', side: '#040a06', border: '#12301c', text: '#c9f7d6', muted: '#1d4a2b', primary: '#39ff7a', second: '#2f8fe0' } },
 ];
 function initialTheme(): Theme {
   try {
@@ -77,43 +82,53 @@ function toggleRail() {
   try { localStorage.setItem('sidebar', rail.value ? 'rail' : 'full'); } catch {}
 }
 
+function ThemePreview({ t }: { t: Preview }) {
+  const v = { '--tp-bg': t.bg, '--tp-elev': t.elev, '--tp-side': t.side, '--tp-border': t.border, '--tp-text': t.text,
+    '--tp-muted': t.muted, '--tp-primary': t.primary, '--tp-second': t.second } as Record<string, string>;
+  return (
+    <div class="tp" style={v} aria-hidden="true">
+      <div class="tp-side"><i class="tp-logo" /><i class="tp-nav on" /><i class="tp-nav" /><i class="tp-nav" /><i class="tp-nav" /></div>
+      <div class="tp-main">
+        <div class="tp-top"><i class="tp-title" /><i class="tp-pill" /></div>
+        <div class="tp-grid">
+          <div class="tp-card"><i class="tp-line" /><i class="tp-big" /><i class="tp-meter"><b /></i></div>
+          <div class="tp-card">
+            <svg viewBox="0 0 60 26" preserveAspectRatio="none"><polyline points="0,20 10,16 20,18 30,9 40,12 50,5 60,8" fill="none" stroke={t.primary} stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />
+              <polyline points="0,24 10,22 20,23 30,18 40,20 50,15 60,17" fill="none" stroke={t.second} stroke-width="2" stroke-linejoin="round" stroke-linecap="round" /></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ThemePicker() {
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: Event) => {
-      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
-      if (e.type === 'pointerdown' && (e.target as Element).closest?.('.theme-pop, .theme-btn')) return;
-      setOpen(false);
-    };
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', close);
-    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close); };
-  }, [open]);
   return (
-    <div class="theme-wrap">
-      <Btn icon class="theme-btn" aria-label={L('تم', 'Theme')} title={L('تم', 'Theme')} aria-expanded={open} onClick={() => setOpen(!open)}>
+    <>
+      <Btn icon class="theme-btn" aria-label={L('تم', 'Theme')} title={L('تم', 'Theme')} onClick={() => setOpen(true)}>
         <Palette size={18} />
       </Btn>
       {open && (
-        <div class="theme-pop" role="menu">
-          <div class="theme-pop-title">{L('تم پنل', 'Panel theme')}</div>
-          {themes.map((t) => (
-            <button role="menuitemradio" aria-checked={theme.value === t.id} class={'theme-opt' + (theme.value === t.id ? ' active' : '')}
-              onClick={() => { setTheme(t.id); setOpen(false); }}>
-              <span class="theme-swatch" style={{ background: t.swatch[0] }}>
-                <i style={{ background: t.swatch[1] }} /><i style={{ background: t.swatch[2] }} />
-              </span>
-              <span class="grow">
-                <span class="theme-name">{t.name()}</span>
-                <span class="theme-desc">{t.desc()}</span>
-              </span>
-              {theme.value === t.id && <Check size={16} />}
-            </button>
-          ))}
-        </div>
+        <Modal wide title={<span class="row" style="gap:10px"><Palette size={18} />{L('ظاهر پنل', 'Appearance')}</span>} onClose={() => setOpen(false)}>
+          <div class="theme-grid" role="radiogroup" aria-label={L('تم', 'Theme')}>
+            {themes.map((t) => (
+              <button key={t.id} role="radio" aria-checked={theme.value === t.id}
+                class={'theme-card' + (theme.value === t.id ? ' active' : '')} onClick={() => setTheme(t.id)}>
+                <ThemePreview t={t.p} />
+                <span class="theme-card-foot">
+                  <span class="grow">
+                    <span class="theme-name">{t.name()}</span>
+                    <span class="theme-desc">{t.desc()}</span>
+                  </span>
+                  <span class="theme-check">{theme.value === t.id && <Check size={14} />}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
-    </div>
+    </>
   );
 }
 
@@ -130,19 +145,20 @@ function Clock() {
   const skew = c.unixMs - (overview.value as any).__fetchedAt;
   const router = new Date(now + (Number.isFinite(skew) ? skew : 0) + c.offsetMin * 60000);
   const p2 = (n: number) => String(n).padStart(2, '0');
-  const fa = lang.value === 'fa';
-  const d = (s: string) => (fa ? digits(s) : s);
-  const date = router.toLocaleDateString(fa ? 'fa-IR-u-ca-persian' : 'en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+  const date = router.toLocaleDateString(dateLocale(true), { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+  const tz = `UTC${c.offsetMin >= 0 ? '+' : '-'}${p2(Math.floor(Math.abs(c.offsetMin) / 60))}:${p2(Math.abs(c.offsetMin) % 60)}`;
+  const sec = router.getUTCSeconds();
   const off = Math.abs(skew) > 120000;
   return (
     <div class={'clock' + (off ? ' off' : '')} title={off
       ? L('ساعت روتر با ساعت این دستگاه بیش از ۲ دقیقه فرق دارد؛ زمان‌بندی‌ها ممکن است درست اجرا نشوند.', 'The router clock differs from this device by over 2 minutes; schedules may run at the wrong time.')
       : L('ساعت روتر', 'Router time')}>
-      <span class="clock-time ltr">
-        {d(p2(router.getUTCHours()))}<span class="clock-sep">:</span>{d(p2(router.getUTCMinutes()))}
-        <span class="clock-sec"><span class="clock-sep">:</span>{d(p2(router.getUTCSeconds()))}</span>
-      </span>
-      <span class="clock-date">{date}</span>
+      <div class="clock-time" dir="ltr">
+        <span class="clock-hm">{p2(router.getUTCHours())}<span class="clock-sep">:</span>{p2(router.getUTCMinutes())}</span>
+        <span class="clock-sec">{p2(sec)}</span>
+      </div>
+      <div class="clock-bar" aria-hidden="true"><i style={{ width: `${((sec + 1) / 60) * 100}%`, transition: sec === 0 ? 'none' : undefined }} /></div>
+      <div class="clock-meta">{date}<span class="clock-tz" dir="ltr">{tz}</span></div>
       {off && <span class="clock-warn" aria-hidden="true" />}
     </div>
   );

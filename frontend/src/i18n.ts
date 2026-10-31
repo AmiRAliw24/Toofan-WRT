@@ -24,28 +24,41 @@ export function applyDir() {
   document.title = lang.value === 'fa' ? 'ToofanWrt · پنل روتر' : 'ToofanWrt · Router panel';
 }
 
+// Numbers are always written with Latin digits (0-9), in Persian too.
+const faDigits = /[۰-۹٠-٩]/g;
+function latinDigits(s: string): string {
+  return s
+    .replace(faDigits, (d) => String((d.charCodeAt(0) - (d >= '۰' ? 0x06f0 : 0x0660)) % 10))
+    .replace(/(\d)٫(\d)/g, '$1.$2')
+    .replace(/٪/g, '%');
+}
+
 /** L picks the string for the current language. */
 export function L(fa: string, en: string): string {
-  return lang.value === 'fa' ? fa : en;
+  return lang.value === 'fa' ? latinDigits(fa) : en;
 }
 
 export function num(n: number, digits = 0): string {
   if (!isFinite(n)) return '—';
-  return n.toLocaleString(lang.value === 'fa' ? 'fa-IR' : 'en-US', {
+  return n.toLocaleString('en-US', {
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
   });
 }
 
 export function pct(n: number, d = 0): string {
-  return num(n, d) + (lang.value === 'fa' ? '٪' : '%');
+  return num(n, d) + '%';
 }
 
-/** Persian digits for things like IP-less labels; IPs stay Latin. */
+/** Kept for callers that format digit strings; digits stay Latin. */
 export function digits(s: string | number): string {
-  const str = String(s);
-  if (lang.value !== 'fa') return str;
-  return str.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
+  return String(s);
+}
+
+/** Locale for dates: Persian (Jalali) words with Latin digits, or English. */
+export function dateLocale(jalali = false): string {
+  if (lang.value !== 'fa') return 'en-GB';
+  return jalali ? 'fa-IR-u-ca-persian-nu-latn' : 'fa-IR-u-nu-latn';
 }
 
 export function rate(bytesPerSec: number): { v: string; u: string } {

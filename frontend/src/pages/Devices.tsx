@@ -6,7 +6,7 @@ import {
 } from 'lucide-preact';
 import { del, get, post, usePoll, type Device, type Schedule, type SitesResp } from '../api';
 import { onRefresh } from '../app';
-import { L, ago, bytes, dayNames, duration, lang, num, rate, weekOrder } from '../i18n';
+import { L, ago, bytes, dateLocale, dayNames, duration, lang, num, rate, weekOrder } from '../i18n';
 import { Badge, Btn, Card, CardHead, Empty, Field, Modal, PageHead, Seg, Setting, Skeleton, Tabs, Toggle, confirmDialog, run } from '../ui';
 
 export const deviceTypes = () => [
@@ -101,7 +101,7 @@ function UsageBars({ days }: { days: DayUsage[] }) {
   const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...days.map((d) => d.down));
   const sel = hover !== null ? days[hover] : days[days.length - 1];
-  const fmtDay = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(lang.value === 'fa' ? 'fa-IR' : 'en-US', { month: 'short', day: 'numeric' });
+  const fmtDay = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric' });
   return (
     <div class="stack" style="gap:6px">
       <div class="row small" style="justify-content:space-between">
