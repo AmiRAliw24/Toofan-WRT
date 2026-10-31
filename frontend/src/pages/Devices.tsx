@@ -449,8 +449,8 @@ export function Devices() {
             <Toggle on={s.enabled} onChange={async (v) => { await run(() => post('/schedules', { ...s, enabled: v })); sch.reload(); }} />
             <div class="grow clickable" style="cursor:pointer;min-width:0" onClick={() => setSchedEdit(s)}>
               <div class="row" style="gap:8px"><b class="ltr">{s.from} – {s.to}</b>
-                <span class="small muted">{weekOrder().filter((d) => s.days.includes(d)).map((d) => dayNames()[d]).join('، ')}</span></div>
-              <div class="tiny faint truncate">{s.macs.map(nameOf).join('، ')}</div>
+                <span class="small muted">{weekOrder().filter((d) => s.days.includes(d)).map((d) => dayNames()[d]).join(L('، ', ', '))}</span></div>
+              <div class="tiny faint truncate">{s.macs.map(nameOf).join(L('، ', ', '))}</div>
             </div>
             <Btn sm icon kind="ghost" aria-label={L('حذف', 'Delete')} onClick={async () => {
               if (await confirmDialog(L('این زمان‌بندی حذف شود؟', 'Delete this schedule?'), true)) {

@@ -21,6 +21,7 @@ import (
 	"toofanwrt/internal/devices"
 	"toofanwrt/internal/env"
 	"toofanwrt/internal/proxy"
+	"toofanwrt/internal/system"
 	"toofanwrt/internal/update"
 	"toofanwrt/internal/wifi"
 )
@@ -221,6 +222,7 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		"operator": line,
 		"exit":     exit,
 		"fwError":  s.core.LastError(),
+		"clock":    map[string]int64{"unixMs": time.Now().UnixMilli(), "offsetMin": int64(system.TZOffsetMinutes())},
 	})
 }
 

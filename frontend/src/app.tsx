@@ -2,11 +2,11 @@ import { signal } from '@preact/signals';
 import { useEffect, useErrorBoundary, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import {
-  Bell, Globe, Home as HomeIcon, Languages, LogOut, Menu, Moon, RefreshCw, Settings, Shield,
-  Smartphone, Tornado, Sun, Wifi, Lock, Gamepad2,
+  Bell, Check, ChevronsLeft, ChevronsRight, Globe, Home as HomeIcon, Languages, LogOut, Menu, Palette, RefreshCw,
+  Settings, Shield, Smartphone, Tornado, Wifi, Lock, Gamepad2,
 } from 'lucide-preact';
 import { authed, get, post, type Overview } from './api';
-import { L, lang, setLang, num, ago } from './i18n';
+import { L, lang, setLang, num, ago, digits } from './i18n';
 import { Btn, ConfirmHost, Modal, Toasts } from './ui';
 import { Home } from './pages/Home';
 import { Internet } from './pages/Internet';
@@ -32,6 +32,11 @@ export function go(r: Route) {
 
 /** Shared overview, polled once for the whole app. */
 export const overview = signal<Overview | null>(null);
+// Remember when each overview arrived, for the clock's skew check.
+function stamp(o: Overview): Overview {
+  (o as any).__fetchedAt = Date.now();
+  return o;
+}
 export const noPassword = signal(false);
 let refreshers: (() => void)[] = [];
 export function onRefresh(f: () => void) {
@@ -40,11 +45,17 @@ export function onRefresh(f: () => void) {
 }
 
 // ---- theme ----
-type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dawn' | 'dark' | 'hacker';
+const themes: { id: Theme; name: () => string; desc: () => string; swatch: string[] }[] = [
+  { id: 'light', name: () => L('روشن', 'Light'), desc: () => L('فیروزه‌ای و تمیز', 'Clean teal'), swatch: ['#f2f6f6', '#0d8a7f', '#6366f1'] },
+  { id: 'dawn', name: () => L('سپیده‌دم', 'Dawn'), desc: () => L('کاغذی گرم با نیلی', 'Warm paper, indigo'), swatch: ['#f6f1e8', '#5b45e0', '#d4760a'] },
+  { id: 'dark', name: () => L('تیره', 'Dark'), desc: () => L('تیرهٔ عمیق با درخشش ملایم', 'Deep dark with a soft glow'), swatch: ['#091213', '#2cc3b1', '#7376f2'] },
+  { id: 'hacker', name: () => L('هکری', 'Hacker'), desc: () => L('ترمینال سبز فسفری', 'Phosphor terminal'), swatch: ['#030805', '#39ff7a', '#2f8fe0'] },
+];
 function initialTheme(): Theme {
   try {
-    const t = localStorage.getItem('theme');
-    if (t === 'light' || t === 'dark') return t;
+    const t = localStorage.getItem('theme') as Theme;
+    if (themes.some((x) => x.id === t)) return t;
   } catch {}
   return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -52,12 +63,90 @@ const theme = signal<Theme>(initialTheme());
 function applyTheme() {
   document.documentElement.dataset.theme = theme.value;
 }
-function toggleTheme() {
-  theme.value = theme.value === 'dark' ? 'light' : 'dark';
-  try { localStorage.setItem('theme', theme.value); } catch {}
+function setTheme(t: Theme) {
+  theme.value = t;
+  try { localStorage.setItem('theme', t); } catch {}
   applyTheme();
 }
 applyTheme();
+
+// ---- sidebar: full or icon rail (desktop) ----
+const rail = signal(((): boolean => { try { return localStorage.getItem('sidebar') === 'rail'; } catch { return false; } })());
+function toggleRail() {
+  rail.value = !rail.value;
+  try { localStorage.setItem('sidebar', rail.value ? 'rail' : 'full'); } catch {}
+}
+
+function ThemePicker() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e.type === 'pointerdown' && (e.target as Element).closest?.('.theme-pop, .theme-btn')) return;
+      setOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', close);
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close); };
+  }, [open]);
+  return (
+    <div class="theme-wrap">
+      <Btn icon class="theme-btn" aria-label={L('تم', 'Theme')} title={L('تم', 'Theme')} aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Palette size={18} />
+      </Btn>
+      {open && (
+        <div class="theme-pop" role="menu">
+          <div class="theme-pop-title">{L('تم پنل', 'Panel theme')}</div>
+          {themes.map((t) => (
+            <button role="menuitemradio" aria-checked={theme.value === t.id} class={'theme-opt' + (theme.value === t.id ? ' active' : '')}
+              onClick={() => { setTheme(t.id); setOpen(false); }}>
+              <span class="theme-swatch" style={{ background: t.swatch[0] }}>
+                <i style={{ background: t.swatch[1] }} /><i style={{ background: t.swatch[2] }} />
+              </span>
+              <span class="grow">
+                <span class="theme-name">{t.name()}</span>
+                <span class="theme-desc">{t.desc()}</span>
+              </span>
+              {theme.value === t.id && <Check size={16} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Clock shows the router's own time (its timezone, its clock), ticking
+ *  every second; a dot warns when the router clock is off. */
+function Clock() {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const c = overview.value?.clock;
+  if (!c) return null;
+  const skew = c.unixMs - (overview.value as any).__fetchedAt;
+  const router = new Date(now + (Number.isFinite(skew) ? skew : 0) + c.offsetMin * 60000);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const fa = lang.value === 'fa';
+  const d = (s: string) => (fa ? digits(s) : s);
+  const date = router.toLocaleDateString(fa ? 'fa-IR-u-ca-persian' : 'en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+  const off = Math.abs(skew) > 120000;
+  return (
+    <div class={'clock' + (off ? ' off' : '')} title={off
+      ? L('ساعت روتر با ساعت این دستگاه بیش از ۲ دقیقه فرق دارد؛ زمان‌بندی‌ها ممکن است درست اجرا نشوند.', 'The router clock differs from this device by over 2 minutes; schedules may run at the wrong time.')
+      : L('ساعت روتر', 'Router time')}>
+      <span class="clock-time ltr">
+        {d(p2(router.getUTCHours()))}<span class="clock-sep">:</span>{d(p2(router.getUTCMinutes()))}
+        <span class="clock-sec"><span class="clock-sep">:</span>{d(p2(router.getUTCSeconds()))}</span>
+      </span>
+      <span class="clock-date">{date}</span>
+      {off && <span class="clock-warn" aria-hidden="true" />}
+    </div>
+  );
+}
 
 interface NavDef {
   id: Route;
@@ -161,9 +250,9 @@ export function App() {
     window.addEventListener('hashchange', onHash);
     get<{ noPassword?: boolean }>('/ping').then((d) => (noPassword.value = !!d.noPassword)).catch(() => {});
     // Probe the session.
-    get('/overview')
+    get<Overview>('/overview')
       .then((o) => {
-        overview.value = o;
+        overview.value = stamp(o);
         authed.value = true;
       })
       .catch(() => {});
@@ -174,7 +263,7 @@ export function App() {
     if (!authed.value) return;
     const t = setInterval(() => {
       if (document.hidden) return;
-      get<Overview>('/overview').then((o) => (overview.value = o)).catch(() => {});
+      get<Overview>('/overview').then((o) => (overview.value = stamp(o))).catch(() => {});
     }, 3000);
     return () => clearInterval(t);
   }, [authed.value]);
@@ -196,9 +285,14 @@ export function App() {
   const warnEvents = (overview.value?.proxy.events || []).filter((e) => e.kind !== 'info' && Date.now() / 1000 - e.at < 3600).length;
 
   return (
-    <div class="app">
+    <div class={'app' + (rail.value ? ' rail' : '')}>
       {menu && <div class="scrim" onClick={() => setMenu(false)} />}
       <aside class={'sidebar' + (menu ? ' open' : '')}>
+        <button class="rail-toggle" onClick={toggleRail}
+          aria-label={rail.value ? L('باز کردن منو', 'Expand menu') : L('جمع کردن منو', 'Collapse menu')}
+          title={rail.value ? L('باز کردن منو', 'Expand menu') : L('جمع کردن منو', 'Collapse menu')}>
+          {(lang.value === 'fa') !== rail.value ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+        </button>
         <div class="brand">
           <div class="brand-logo"><Tornado size={22} /></div>
           <div>
@@ -219,9 +313,7 @@ export function App() {
           }}>
             <Languages size={17} /> {lang.value === 'fa' ? 'English' : 'فارسی'}
           </Btn>
-          <Btn icon onClick={toggleTheme} aria-label={L('تغییر تم', 'Toggle theme')}>
-            {theme.value === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </Btn>
+          <ThemePicker />
           <Btn icon aria-label={L('خروج', 'Log out')} onClick={async () => {
             await post('/logout').catch(() => {});
             authed.value = false;
@@ -236,12 +328,13 @@ export function App() {
             <Menu size={20} />
           </Btn>
           <div class="topbar-title grow">{cur.label()}</div>
+          <Clock />
           <Btn kind="ghost" icon aria-label={L('رویدادها', 'Events')} onClick={() => setShowEvents(true)} style="position:relative">
             <Bell size={19} />
             {warnEvents > 0 && <span class="dot bad" style="position:absolute;top:9px;inset-inline-end:9px" />}
           </Btn>
           <Btn kind="ghost" icon aria-label={L('بازخوانی', 'Refresh')} onClick={() => {
-            get<Overview>('/overview').then((o) => (overview.value = o)).catch(() => {});
+            get<Overview>('/overview').then((o) => (overview.value = stamp(o))).catch(() => {});
             refreshers.forEach((f) => f());
           }}>
             <RefreshCw size={18} />
