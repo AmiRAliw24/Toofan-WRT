@@ -190,6 +190,8 @@ export interface SystemStats {
   diskTotalKb: number;
   diskFreeKb: number;
   tempC?: number;
+  tempSensor?: string;
+  temps?: { name: string; c: number }[];
 }
 
 export interface WAN {
@@ -227,4 +229,5 @@ export interface Overview {
   operator?: NetInfo;
   exit?: NetInfo;
   fwError?: string;
+  clock?: { unixMs: number; offsetMin: number };
 }

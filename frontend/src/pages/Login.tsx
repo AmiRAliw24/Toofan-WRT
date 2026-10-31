@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Tornado } from 'lucide-preact';
+import { Languages, Tornado } from 'lucide-preact';
 import { authed, get, post } from '../api';
-import { L } from '../i18n';
+import { L, lang, setLang } from '../i18n';
 import { Btn, Card, Field, Password, toast } from '../ui';
 
 export function Login() {
@@ -28,10 +28,13 @@ export function Login() {
         <form onSubmit={submit} class="stack">
           <div class="row" style="gap:14px">
             <div class="brand-logo"><Tornado size={22} /></div>
-            <div>
+            <div class="grow">
               <div class="brand-name">ToofanWrt</div>
               <div class="brand-sub">{L('پنل مدیریت روتر', 'Router panel')}</div>
             </div>
+            <Btn sm kind="ghost" onClick={() => setLang(lang.value === 'fa' ? 'en' : 'fa')}>
+              <Languages size={16} />{lang.value === 'fa' ? 'English' : 'فارسی'}
+            </Btn>
           </div>
           <Field label={L('رمز روتر', 'Router password')} hint={L('همان رمز root روتر (SSH)', 'Same as the router root (SSH) password')}>
             <Password value={pw} onInput={setPw} autocomplete="current-password" />

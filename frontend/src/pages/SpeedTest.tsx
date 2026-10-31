@@ -30,7 +30,7 @@ function serverTitle(s: SpeedServer) {
 
 function serverSub(s: SpeedServer) {
   if (s.kind === 'cloudflare') return L('نزدیک‌ترین مرکز داده (جهانی)', 'Nearest data centre (global)');
-  return `${s.name}، ${s.country}${s.distanceKm ? ` · ${num(s.distanceKm)} km` : ''}`;
+  return `${s.name}${L('، ', ', ')}${s.country}${s.distanceKm ? ` · ${num(s.distanceKm)} km` : ''}`;
 }
 
 function store(key: string, v?: unknown) {

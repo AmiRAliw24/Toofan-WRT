@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -30,6 +31,8 @@ type Stats struct {
 	DiskTotalKB int64      `json:"diskTotalKb"`
 	DiskFreeKB  int64      `json:"diskFreeKb"`
 	TempC       float64    `json:"tempC,omitempty"`
+	TempSensor  string     `json:"tempSensor,omitempty"` // which sensor TempC came from
+	Temps       []Temp     `json:"temps,omitempty"`      // every sensor found
 }
 
 type WAN struct {
@@ -245,7 +248,8 @@ func fillDynamic(st *Stats) {
 		st.Load = [3]float64{0.42, 0.37, 0.31}
 		st.MemTotalKB, st.MemAvailKB = 506000, 341000
 		st.DiskTotalKB, st.DiskFreeKB = 3800000, 3550000
-		st.TempC = 52
+		st.TempC, st.TempSensor = 52, "cpu"
+		st.Temps = []Temp{{Name: "cpu", C: 52}, {Name: "ath10k_hwmon (phy0)", C: 47}, {Name: "ath10k_hwmon (phy1)", C: 49}}
 		return
 	}
 	if b, err := os.ReadFile("/proc/uptime"); err == nil {
@@ -279,8 +283,124 @@ func fillDynamic(st *Stats) {
 	if st.DiskTotalKB == 0 {
 		st.DiskTotalKB, st.DiskFreeKB = diskUsage("/")
 	}
-	if b, err := os.ReadFile("/sys/class/thermal/thermal_zone0/temp"); err == nil {
-		n, _ := strconv.ParseFloat(strings.TrimSpace(string(b)), 64)
-		st.TempC = n / 1000
+	st.Temps = readTemps()
+	st.TempC, st.TempSensor = pickTemp(st.Temps)
+}
+
+type Temp struct {
+	Name string  `json:"name"`
+	C    float64 `json:"c"`
+}
+
+// readTemps collects every temperature sensor: thermal zones (SoC/CPU, when
+// the device tree has them) and hwmon devices (on IPQ40xx routers such as
+// Google WiFi usually only the ath10k radios report one).
+func readTemps() []Temp {
+	var out []Temp
+	add := func(name, path string) {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return
+		}
+		v, err := strconv.ParseFloat(strings.TrimSpace(string(b)), 64)
+		if err != nil {
+			return
+		}
+		if v > 1000 { // millidegrees
+			v /= 1000
+		}
+		if v <= 0 || v >= 150 { // missing or bogus reading
+			return
+		}
+		out = append(out, Temp{Name: name, C: math.Round(v*10) / 10})
 	}
+	zones, _ := filepath.Glob("/sys/class/thermal/thermal_zone*")
+	for _, z := range zones {
+		name := strings.TrimSpace(readStr(z + "/type"))
+		if name == "" {
+			name = filepath.Base(z)
+		}
+		add(name, z+"/temp")
+	}
+	mons, _ := filepath.Glob("/sys/class/hwmon/hwmon*")
+	for _, h := range mons {
+		name := strings.TrimSpace(readStr(h + "/name"))
+		if name == "" {
+			name = filepath.Base(h)
+		}
+		// ath10k names every radio the same; tell them apart by phy.
+		if phys, _ := filepath.Glob(h + "/device/ieee80211/phy*"); len(phys) == 1 {
+			name += " (" + filepath.Base(phys[0]) + ")"
+		}
+		inputs, _ := filepath.Glob(h + "/temp*_input")
+		for _, in := range inputs {
+			add(name, in)
+		}
+	}
+	return out
+}
+
+// pickTemp chooses the headline temperature: a CPU/SoC sensor when there
+// is one, otherwise the hottest sensor.
+func pickTemp(ts []Temp) (float64, string) {
+	best := -1
+	for i, t := range ts {
+		n := strings.ToLower(t.Name)
+		if strings.Contains(n, "cpu") || strings.Contains(n, "soc") || strings.Contains(n, "tsens") {
+			return t.C, t.Name
+		}
+		if best < 0 || t.C > ts[best].C {
+			best = i
+		}
+	}
+	if best < 0 {
+		return 0, ""
+	}
+	return ts[best].C, ts[best].Name
+}
+
+func readStr(path string) string {
+	b, _ := os.ReadFile(path)
+	return string(b)
+}
+
+var (
+	tzMu      sync.Mutex
+	tzOffset  int
+	tzChecked time.Time
+)
+
+// TZOffsetMinutes is the router's offset from UTC as OpenWrt applies it
+// (/etc/TZ, which Go's time.Local does not read), refreshed every minute.
+func TZOffsetMinutes() int {
+	if env.Mock {
+		return 210 // Asia/Tehran
+	}
+	tzMu.Lock()
+	defer tzMu.Unlock()
+	if time.Since(tzChecked) < time.Minute {
+		return tzOffset
+	}
+	tzChecked = time.Now()
+	if out, err := env.Run(3*time.Second, "date", "+%z"); err == nil {
+		tzOffset = parseTZ(strings.TrimSpace(out))
+	}
+	return tzOffset
+}
+
+// parseTZ turns "+0330" / "-0500" into minutes.
+func parseTZ(z string) int {
+	if len(z) != 5 || (z[0] != '+' && z[0] != '-') {
+		return 0
+	}
+	h, err1 := strconv.Atoi(z[1:3])
+	m, err2 := strconv.Atoi(z[3:5])
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	v := h*60 + m
+	if z[0] == '-' {
+		v = -v
+	}
+	return v
 }
