@@ -4,6 +4,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sort"
 	"strconv"
@@ -50,7 +51,8 @@ type Core struct {
 	exitFor   string
 	pending   chan struct{}
 	meter     speedMeter
-	iranCIDRs []string
+	iranMu    sync.RWMutex
+	iranCIDRs []string // guarded by iranMu; replaced when geo files update
 	lastErr   string
 }
 
@@ -67,7 +69,7 @@ func New(store *config.Store, xrayBin, xrayCompatBin string) *Core {
 		XrayCompatBin: xrayCompatBin,
 		ISPDNS:        c.ispDNS,
 		OnModeChange:  c.RequestApply,
-		KernelIran:    func() bool { return len(c.iranCIDRs) > 0 },
+		KernelIran:    func() bool { return len(c.iran()) > 0 },
 	}
 	c.Proxy.Init()
 	c.Quality = NewQuality(c)
@@ -106,6 +108,60 @@ func (c *Core) Start() {
 	go c.nightly()
 	go c.infoLoop()
 	go c.speedLoop()
+	go c.geoLoop()
+}
+
+// iran returns the Iranian IPv4 ranges loaded from geoip.dat.
+func (c *Core) iran() []string {
+	c.iranMu.RLock()
+	defer c.iranMu.RUnlock()
+	return c.iranCIDRs
+}
+
+// UpdateGeo fetches fresh geo files, reloads the kernel's Iranian set and
+// restarts Xray on them; if Xray won't start, the previous files return.
+func (c *Core) UpdateGeo() (geo.Meta, error) {
+	m, err := geo.Update()
+	if err != nil {
+		return m, err
+	}
+	c.loadIran()
+	c.RequestApply()
+	if err := c.Proxy.Restart(); err != nil {
+		geo.Rollback()
+		c.loadIran()
+		c.RequestApply()
+		c.Proxy.Restart()
+		return m, fmt.Errorf("Xray did not start with the new geo files, the previous ones were restored: %v", err)
+	}
+	env.Logf("geo files updated to %s", m.Tag)
+	return m, nil
+}
+
+// ReloadGeo applies geo files that changed on disk (rollback).
+func (c *Core) ReloadGeo() {
+	c.loadIran()
+	c.RequestApply()
+	go c.Proxy.Restart()
+}
+
+// geoLoop keeps the geo files current: first download soon after boot,
+// then weekly (when auto-update is on). Failures retry hourly.
+func (c *Core) geoLoop() {
+	time.Sleep(90 * time.Second) // let the line and the tunnel come up
+	for {
+		wait := 6 * time.Hour
+		if c.Store.Get().Geo.AutoUpdate && !geo.CurrentJob().Running {
+			m := geo.LoadMeta()
+			if !geo.Downloaded() || time.Since(time.Unix(m.UpdatedAt, 0)) > 7*24*time.Hour {
+				if _, err := c.UpdateGeo(); err != nil {
+					env.Logf("geo update: %v", err)
+					wait = time.Hour
+				}
+			}
+		}
+		time.Sleep(wait)
+	}
 }
 
 // infoLoop keeps the line's and the tunnel's public IP/ISP fresh.
@@ -233,7 +289,9 @@ func (c *Core) loadIran() {
 		env.Logf("geoip: %v", err)
 		return
 	}
+	c.iranMu.Lock()
 	c.iranCIDRs = cidrs
+	c.iranMu.Unlock()
 	env.Logf("loaded %d Iranian networks", len(cidrs))
 }
 
@@ -361,10 +419,10 @@ func (c *Core) apply() {
 	}
 	switch {
 	case cfg.Proxy.IranMode == config.IranDirect:
-		plan.IranCIDRs = c.iranCIDRs
+		plan.IranCIDRs = c.iran()
 	case cfg.Proxy.IranMode == config.IranBlock && cfg.Proxy.Enabled:
-		plan.IranCIDRs = c.iranCIDRs
-		plan.IranBlock = len(c.iranCIDRs) > 0
+		plan.IranCIDRs = c.iran()
+		plan.IranBlock = len(plan.IranCIDRs) > 0
 	}
 	plan.DirectNetdevs = c.directNetdevs(cfg)
 	for mac, d := range cfg.Devices {

@@ -6,7 +6,7 @@ import { L, lang } from '../i18n';
 import { Badge, Btn, Card, CardHead, Field, PageHead, Setting, Skeleton, Toggle, run } from '../ui';
 
 interface Provider { id: string; name: string; nameFa: string; servers: string[] | null; doh?: string; domestic: boolean }
-interface DnsCfg { provider: string; custom: string; mode: string; blockAds: boolean; logSites: boolean }
+interface DnsCfg { provider: string; custom: string; mode: string; blockAds: boolean; blockMalware?: boolean; logSites: boolean }
 interface DnsResp { config: DnsCfg; providers: Provider[]; tunnel: boolean; isp: string[] | null; lockWan: boolean }
 
 export function Dns() {
@@ -89,9 +89,13 @@ export function Dns() {
       <Card>
         <CardHead icon={<ShieldBan size={20} />} tone="danger" title={L('فیلترینگ', 'Filtering')} />
         <div class="card-body" style="padding-block:0">
-          <Setting title={L('مسدودسازی تبلیغات', 'Block ads')} desc={L('تبلیغات و ردیاب‌های رایج سایت‌ها و برنامه‌های ایرانی مسدود می‌شوند (وقتی اینترنت آزاد روشن است)', 'Common ads and trackers on Iranian sites/apps are blocked (while the free internet is on)')}>
+          <Setting title={L('مسدودسازی تبلیغات', 'Block ads')} desc={L('بیش از 78 هزار دامنهٔ تبلیغاتی و ردیاب، ایرانی و خارجی (فهرست category-ads-all؛ وقتی اینترنت آزاد روشن است)', '78k+ ad and tracker domains, Iranian and foreign (category-ads-all list; while the free internet is on)')}>
             <Toggle on={c.blockAds} onChange={(v) => save({ blockAds: v })} />
           </Setting>
+          <Setting title={L('مسدودسازی بدافزار و فیشینگ', 'Block malware and phishing')} desc={L('سایت‌های بدافزار، فیشینگ (جعلی) و استخراج پنهان رمزارز مسدود می‌شوند (وقتی اینترنت آزاد روشن است)', 'Malware, phishing and hidden crypto-mining sites are blocked (while the free internet is on)')}>
+            <Toggle on={!!c.blockMalware} onChange={(v) => save({ blockMalware: v })} />
+          </Setting>
+          <div class="tiny faint" style="padding:0 0 14px">{L('فهرست‌ها از فایل‌های جئو هستند؛ از «اینترنت آزاد ← هسته و جئو» به‌روز می‌شوند.', 'Lists come from the geo files; update them under “Free internet → Core & geo”.')}</div>
         </div>
       </Card>
       <Card>

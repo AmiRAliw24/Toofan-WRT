@@ -32,9 +32,9 @@ bundle() { # list-file dest-subdir
 # - main: the newest official release (checked against its published SHA-256);
 # - compat: 26.3.27, the newest that still allows VLESS/Trojan without TLS
 #   (later releases refuse it), from OpenWrt 25.12's feed (apk-v3 container).
-XRAY_VERSION=26.10.29
+XRAY_VERSION=26.10.31
 XRAY_ZIP_URL="https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/Xray-linux-arm32-v7a.zip"
-XRAY_ZIP_SHA256=263fa7325c63b3a7f7316405f561e7c790b44c1461992ea648007f0374e9bdf4
+XRAY_ZIP_SHA256=2387f55239ee7799fd67d5382e79f589c1da07a97d993e86b058f2290b8e456b
 XRAY_COMPAT_APK_URL="https://downloads.openwrt.org/releases/25.12.6/packages/arm_cortex-a7_neon-vfpv4/packages/xray-core-26.3.27-r1.apk"
 mkdir -p openwrt/pkgs/xray
 [ -f "openwrt/pkgs/xray/xray-$XRAY_VERSION-armv7" ] || {

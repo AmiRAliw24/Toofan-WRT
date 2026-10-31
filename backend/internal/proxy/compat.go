@@ -93,6 +93,18 @@ func NeedsCompatEngine(s config.Server) bool {
 	return true
 }
 
+// RefusesPlainVLESS reports whether an Xray version rejects VLESS/Trojan
+// without TLS; 26.3.27 is the newest known to accept them.
+func RefusesPlainVLESS(v [3]int) bool {
+	last := [3]int{26, 3, 27}
+	for i := 0; i < 3; i++ {
+		if v[i] != last[i] {
+			return v[i] > last[i]
+		}
+	}
+	return false
+}
+
 // adaptOutbound rewrites settings that the running Xray version no longer
 // accepts. Xray 26 removed "allowInsecure" in favour of a pinned certificate.
 func adaptOutbound(ob *XOutbound) error {

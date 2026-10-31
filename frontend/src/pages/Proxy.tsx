@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   Check, FileUp, Gauge, Link2, ListChecks, Plus, Power, RefreshCw, ScrollText, Server as ServerIcon, ShieldCheck,
-  ShieldHalf, Split, Star, Trash2, Wand2, Zap, Globe2, Users, Timer, Ban,
+  ShieldHalf, Split, Star, Trash2, Wand2, Zap, Globe2, Users, Timer, Ban, Cpu,
 } from 'lucide-preact';
 import { del, get, post, usePoll, type IranMode, type ProxyConfig, type ProxyStatus, type Server } from '../api';
 import { onRefresh, overview } from '../app';
 import { L, ago, lang, num } from '../i18n';
 import { Badge, Btn, Card, CardHead, Empty, Field, PageHead, Password, Seg, Setting, Skeleton, Tabs, Toggle, confirmDialog, latClass, run, toast } from '../ui';
 import { modeInfo } from './Home';
+import { CoresTab } from './Cores';
 
-type Tab = 'servers' | 'protection' | 'log';
+type Tab = 'servers' | 'protection' | 'core' | 'log';
 
 interface ProxyResp {
   config: ProxyConfig;
@@ -530,6 +531,7 @@ export function Proxy() {
       <Tabs value={tab} onChange={setTab} items={[
         { id: 'servers', label: L('سرورها', 'Servers'), icon: <Globe2 size={17} /> },
         { id: 'protection', label: L('محافظت', 'Protection'), icon: <ShieldCheck size={17} /> },
+        { id: 'core', label: L('هسته و جئو', 'Core & geo'), icon: <Cpu size={17} /> },
         { id: 'log', label: L('گزارش', 'Log'), icon: <ScrollText size={17} /> },
       ]} />
       {data && tab === 'servers' && (
@@ -540,6 +542,7 @@ export function Proxy() {
         </>
       )}
       {data && tab === 'protection' && <Protection d={data} reload={reload} />}
+      {data && tab === 'core' && <CoresTab />}
       {data && tab === 'log' && <Log d={data} />}
       <div class="tiny faint row" style="justify-content:center;gap:6px"><Users size={13} /><Ban size={13} />
         {L('دستگاه‌هایی که باید مستقیم بروند (مثل تلویزیون) را از صفحهٔ دستگاه‌ها تنظیم کنید', 'Set devices that must go direct (e.g. a TV) on the Devices page')}

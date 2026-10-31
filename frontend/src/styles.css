@@ -888,3 +888,14 @@ details.adv > div { padding: 4px 14px 12px; }
   .app.rail .side-foot { flex-direction: column; align-items: center; padding: 10px 8px; }
   .app.rail .side-foot .btn.grow { flex: 0 0 auto; width: 40px; padding: 0; font-size: 0; gap: 0; }
 }
+
+/* ---- Xray core & geo cards ---- */
+.core-now { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: var(--radius-sm); background: var(--bg-sunken); border: 1px solid var(--border); }
+.core-ver { font-family: var(--mono); font-size: 26px; font-weight: 800; letter-spacing: 0.5px; color: var(--text); }
+.core-pick { display: flex; gap: 8px; flex-wrap: wrap; }
+.core-pick .select { flex: 1; min-width: 220px; }
+.geo-uses { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.geo-use { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; border-radius: var(--radius-sm); border: 1px solid var(--border); font-size: var(--fs-sm); }
+.geo-key { font-family: var(--mono); font-size: 11.5px; color: var(--primary); text-align: start; }
+@media (max-width: 520px) { .geo-uses { grid-template-columns: 1fr; } }

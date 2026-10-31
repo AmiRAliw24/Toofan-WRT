@@ -25,6 +25,18 @@ const (
 // other TLDs (digikala.com, aparat.com, …) are in "other".
 var assetIran = []string{"ext:iran.dat:ir", "ext:iran.dat:other"}
 
+// iranDomains lists Iranian sites for routing and DNS: geosite:ir from the
+// downloaded set (57k+ names, .ir included), else the packaged iran.dat.
+func iranDomains(o BuildOpts) []string {
+	switch {
+	case o.GeoSite:
+		return []string{"domain:ir", "geosite:ir"}
+	case o.HaveIran:
+		return append([]string{"domain:ir"}, assetIran...)
+	}
+	return []string{"domain:ir"}
+}
+
 type BuildOpts struct {
 	Server    config.Server
 	IranMode  string // config.IranDirect | IranTunnel | IranBlock
@@ -33,6 +45,11 @@ type BuildOpts struct {
 	SecureDNS []string // resolvers used through the tunnel
 	HaveIran  bool     // iran.dat is installed
 	HaveGeoIP bool     // geoip.dat is installed (for geoip:ir without the kernel set)
+	// GeoSite: the chocolate4u geosite.dat/geoip.dat are installed, which
+	// carry geosite:ir, category-ads-all, malware, phishing, … (preferred
+	// over the packaged iran.dat).
+	GeoSite      bool
+	BlockMalware bool // malware, phishing and crypto-mining domains/IPs
 	// KernelIran: Iranian IP ranges are already excluded in nftables, so Xray
 	// doesn't need to load the 20+ MB geoip.dat (slow on router CPUs).
 	KernelIran bool
@@ -93,10 +110,7 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	sort.Strings(hostDoms)
 	var iranDoms []string
 	if o.IranMode == config.IranDirect {
-		iranDoms = []string{"domain:ir"}
-		if o.HaveIran {
-			iranDoms = append(iranDoms, assetIran...)
-		}
+		iranDoms = iranDomains(o)
 	}
 
 	// Iranian names must get Iranian answers: many Iranian sites sit on CDNs
@@ -153,7 +167,15 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 		map[string]any{"type": "field", "inboundTag": []string{"dns-internal"}, "outboundTag": "proxy"},
 		map[string]any{"type": "field", "ip": privateCIDRs, "outboundTag": "direct"},
 	)
-	if o.BlockAds && o.HaveIran {
+	if o.BlockMalware && o.GeoSite {
+		rules = append(rules,
+			map[string]any{"type": "field", "domain": []string{"geosite:malware", "geosite:phishing", "geosite:cryptominers"}, "outboundTag": "block"},
+			map[string]any{"type": "field", "ip": []string{"geoip:malware"}, "outboundTag": "block"})
+	}
+	switch {
+	case o.BlockAds && o.GeoSite:
+		rules = append(rules, map[string]any{"type": "field", "domain": []string{"geosite:category-ads-all"}, "outboundTag": "block"})
+	case o.BlockAds && o.HaveIran:
 		rules = append(rules, map[string]any{"type": "field", "domain": []string{"ext:iran.dat:ads"}, "outboundTag": "block"})
 	}
 	if o.IranMode == config.IranDirect || o.IranMode == config.IranBlock {
@@ -161,11 +183,7 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 		if o.IranMode == config.IranBlock {
 			to = "block"
 		}
-		dom := []string{"domain:ir"}
-		if o.HaveIran {
-			dom = append(dom, assetIran...)
-		}
-		rules = append(rules, map[string]any{"type": "field", "domain": dom, "outboundTag": to})
+		rules = append(rules, map[string]any{"type": "field", "domain": iranDomains(o), "outboundTag": to})
 		if !o.KernelIran && o.HaveGeoIP {
 			rules = append(rules, map[string]any{"type": "field", "ip": []string{"geoip:ir"}, "outboundTag": to})
 		}

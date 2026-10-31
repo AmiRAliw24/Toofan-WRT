@@ -65,3 +65,11 @@ func TestNeedsCompatEngine(t *testing.T) {
 		}
 	}
 }
+
+func TestRefusesPlainVLESS(t *testing.T) {
+	for v, want := range map[[3]int]bool{{26, 3, 27}: false, {25, 1, 30}: false, {24, 12, 31}: false, {26, 3, 28}: true, {26, 10, 29}: true, {27, 0, 0}: true} {
+		if got := RefusesPlainVLESS(v); got != want {
+			t.Errorf("RefusesPlainVLESS(%v) = %v", v, got)
+		}
+	}
+}

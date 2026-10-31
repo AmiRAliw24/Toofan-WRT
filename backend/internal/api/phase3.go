@@ -29,6 +29,7 @@ func (s *Server) phase3Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/system/restore", s.restore)
 	api.HandleFunc("GET /api/system/export", s.exportSettings)
 	api.HandleFunc("POST /api/system/import", s.importSettings)
+	s.registerCores(api)
 	api.HandleFunc("GET /api/luci", s.luciGet)
 	api.HandleFunc("POST /api/luci", s.luciSet)
 	api.HandleFunc("POST /api/luci/remove", func(w http.ResponseWriter, r *http.Request) {
