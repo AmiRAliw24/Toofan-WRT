@@ -100,7 +100,14 @@ XRAY=/usr/bin/xray
 XRAY_COMPAT=""
 case "$ARCH" in
 	armv7l)
-		XRAY="$(install_xray bin/xray-armv7 xray)" || { XRAY=/usr/bin/xray; say "bundled Xray does not run here; using the system package"; }
+		# A version picked in the panel (Xray version manager) is kept.
+		PINNED_XRAY="$(uci -q get toofanwrt.main.xray_pinned || true)"
+		if [ "$PINNED_XRAY" = 1 ] && /usr/libexec/toofanwrt/xray version >/dev/null 2>&1; then
+			XRAY=/usr/libexec/toofanwrt/xray
+			say "keeping the Xray version chosen in the panel"
+		else
+			XRAY="$(install_xray bin/xray-armv7 xray)" || { XRAY=/usr/bin/xray; say "bundled Xray does not run here; using the system package"; }
+		fi
 		XRAY_COMPAT="$(install_xray bin/xray-compat-armv7 xray-compat)" || XRAY_COMPAT=""
 		;;
 esac

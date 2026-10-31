@@ -12,14 +12,17 @@ import (
 
 // Paths searched for the data files shipped by OpenWrt's v2ray-geodata packages.
 var (
-	GeoIPPaths   = []string{"/usr/share/xray/geoip.dat", "/usr/share/v2ray/geoip.dat"}
+	GeoIPPaths   = []string{"/usr/share/toofanwrt/geo/geoip.dat", "/usr/share/xray/geoip.dat", "/usr/share/v2ray/geoip.dat"}
 	IranDatPaths = []string{"/usr/share/xray/iran.dat", "/usr/share/v2ray/iran.dat"}
 )
 
-// AssetDir is the directory Xray loads geoip.dat/iran.dat from
-// (XRAY_LOCATION_ASSET): /usr/share/xray, or /usr/share/v2ray when only
-// that one has the files.
+// AssetDir is the directory Xray loads geo files from (XRAY_LOCATION_ASSET):
+// the downloaded chocolate4u set when present, else /usr/share/xray, or
+// /usr/share/v2ray when only that one has the packaged files.
 func AssetDir() string {
+	if Downloaded() {
+		return Dir
+	}
 	for _, d := range []string{"/usr/share/xray", "/usr/share/v2ray"} {
 		if FirstExisting([]string{d + "/geoip.dat", d + "/iran.dat"}) != "" {
 			return d

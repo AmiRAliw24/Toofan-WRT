@@ -242,7 +242,7 @@ func (t *Tester) ensure(servers []config.Server, isp []string) (map[string]int, 
 	bin := t.XrayBin
 	if t.CompatBin != "" {
 		for _, s := range servers {
-			if NeedsCompatEngine(s) {
+			if NeedsCompatEngine(s) && RefusesPlainVLESS(XrayVersion) {
 				bin = t.CompatBin // it runs every server type
 				break
 			}

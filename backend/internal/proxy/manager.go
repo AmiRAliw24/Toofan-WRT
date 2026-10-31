@@ -91,6 +91,12 @@ type Manager struct {
 	lastSubUpdate    time.Time
 	lastAllDownTry   time.Time
 	kick             chan struct{}
+	restart          chan restartReq
+}
+
+type restartReq struct {
+	bin  string // new main binary, "" = keep
+	done chan error
 }
 
 func (m *Manager) Init() {
@@ -100,6 +106,7 @@ func (m *Manager) Init() {
 	}
 	m.mode = ModeOff
 	m.kick = make(chan struct{}, 1)
+	m.restart = make(chan restartReq)
 	m.pending = map[string]bool{}
 }
 
@@ -199,6 +206,11 @@ func (m *Manager) Run() {
 			m.reconcile(false)
 		case <-m.kick:
 			m.reconcile(true)
+		case r := <-m.restart:
+			if r.bin != "" {
+				m.XrayBin = r.bin
+			}
+			r.done <- m.restartNow()
 		}
 	}
 }
@@ -609,15 +621,17 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 		hosts = append(hosts, s.Address)
 	}
 	opts := BuildOpts{
-		Server:     *srv,
-		IranMode:   cfg.IranMode,
-		BlockAds:   full.DNS.BlockAds,
-		ISPDNS:     m.isp(),
-		SecureDNS:  SecureDNSFor(full.DNS),
-		HaveIran:   geo.HasAsset("iran.dat"),
-		HaveGeoIP:  geo.HasAsset("geoip.dat"),
-		KernelIran: m.KernelIran != nil && m.KernelIran(),
-		AllHosts:   hosts,
+		Server:       *srv,
+		IranMode:     cfg.IranMode,
+		BlockAds:     full.DNS.BlockAds,
+		ISPDNS:       m.isp(),
+		SecureDNS:    SecureDNSFor(full.DNS),
+		HaveIran:     geo.HasAsset("iran.dat"),
+		HaveGeoIP:    geo.HasAsset("geoip.dat"),
+		GeoSite:      geo.Downloaded(),
+		BlockMalware: full.DNS.BlockMalware,
+		KernelIran:   m.KernelIran != nil && m.KernelIran(),
+		AllHosts:     hosts,
 	}
 	data, baseFP, err := BuildConfig(opts)
 	if err != nil {
@@ -737,6 +751,7 @@ func (m *Manager) lastOpts(srv config.Server) BuildOpts {
 	}
 	return BuildOpts{Server: srv, IranMode: cfg.Proxy.IranMode, BlockAds: cfg.DNS.BlockAds, ISPDNS: m.isp(),
 		SecureDNS: SecureDNSFor(cfg.DNS), HaveIran: geo.HasAsset("iran.dat"), HaveGeoIP: geo.HasAsset("geoip.dat"),
+		GeoSite: geo.Downloaded(), BlockMalware: cfg.DNS.BlockMalware,
 		KernelIran: m.KernelIran != nil && m.KernelIran(), AllHosts: hosts}
 }
 
@@ -815,8 +830,64 @@ func contains(xs []string, x string) bool {
 // binFor picks the Xray binary for a server: the main engine unless only
 // the compat one accepts it.
 func (m *Manager) binFor(s config.Server) string {
-	if m.XrayCompatBin != "" && NeedsCompatEngine(s) {
+	if m.XrayCompatBin != "" && NeedsCompatEngine(s) && RefusesPlainVLESS(XrayVersion) {
 		return m.XrayCompatBin
 	}
 	return m.XrayBin
 }
+
+// Restart reloads the engine from scratch (new Xray binary or geo files)
+// and reports whether the current server came back up. It runs on the
+// watchdog goroutine, like every other start.
+func (m *Manager) Restart() error { return m.request("") }
+
+func (m *Manager) request(bin string) error {
+	done := make(chan error, 1)
+	select {
+	case m.restart <- restartReq{bin: bin, done: done}:
+	case <-time.After(2 * time.Minute):
+		return errors.New("engine busy")
+	}
+	return <-done
+}
+
+// EngineBin is the main Xray binary in use.
+func (m *Manager) EngineBin() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.tester.XrayBin
+}
+
+func (m *Manager) restartNow() error {
+	if v := DetectXrayVersion(m.XrayBin); v != "" {
+		env.Logf("xray %s", v)
+	}
+	m.tester.Stop() // rebuilt with the new binary/files on the next test
+	m.mu.Lock()
+	m.tester.XrayBin = m.XrayBin
+	m.mu.Unlock()
+	cfg := m.Store.Get().Proxy
+	if !cfg.Enabled {
+		return nil
+	}
+	m.mu.Lock()
+	id := m.activeID
+	m.mu.Unlock()
+	if id == "" {
+		id = cfg.ActiveID
+	}
+	if findServer(cfg.Servers, id) == nil {
+		return nil
+	}
+	if err := m.start(cfg, id, true); err != nil {
+		m.mu.Lock()
+		m.logEvent("error", "engine did not start after the change: %v", err)
+		m.mu.Unlock()
+		return err
+	}
+	m.healthCheck(cfg)
+	return nil
+}
+
+// SetEngine switches the main Xray binary (version change) and restarts.
+func (m *Manager) SetEngine(bin string) error { return m.request(bin) }

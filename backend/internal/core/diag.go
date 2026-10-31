@@ -159,7 +159,7 @@ func (c *Core) Diagnose() DiagReport {
 			return "", errString("Iranian names do not resolve: " + err.Error())
 		}
 		ip := ips[0]
-		if len(c.iranCIDRs) > 0 && !inCIDRs(ip, c.iranCIDRs) {
+		if cidrs := c.iran(); len(cidrs) > 0 && !inCIDRs(ip, cidrs) {
 			return "", errString(ip + " is not an Iranian address (DNS answered from abroad)")
 		}
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "443"), 5*time.Second)

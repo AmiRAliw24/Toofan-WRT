@@ -105,6 +105,14 @@ type DNS struct {
 	Mode     string `json:"mode"` // udp | doh
 	BlockAds bool   `json:"blockAds"`
 	LogSites bool   `json:"logSites"`
+	// Block malware, phishing and crypto-mining sites (needs the
+	// downloaded geo files; applies to traffic through the tunnel).
+	BlockMalware bool `json:"blockMalware"`
+}
+
+// Geo data (chocolate4u/Iran-v2ray-rules) update policy.
+type Geo struct {
+	AutoUpdate bool `json:"autoUpdate"` // weekly
 }
 
 type LED struct {
@@ -137,6 +145,7 @@ type Config struct {
 	UpdateURL string            `json:"updateUrl"` // release manifest (JSON)
 	// WiFiRoutes: wifi-iface section -> "direct" for networks that bypass the tunnel.
 	WiFiRoutes map[string]string `json:"wifiRoutes"`
+	Geo        Geo               `json:"geo"`
 }
 
 func Default() *Config {
@@ -154,6 +163,7 @@ func Default() *Config {
 		Devices: map[string]Device{},
 		DNS:     DNS{Provider: "isp", Mode: "udp"},
 		LockWAN: true,
+		Geo:     Geo{AutoUpdate: true},
 		LED:     LED{Mode: "auto", Color: "#00b894", Brightness: 60, NightFrom: "23:30", NightTo: "07:00", SpeedGood: 20, SpeedMid: 5},
 	}
 }
