@@ -42,12 +42,14 @@ var (
 	KeepPath     = "/lib/upgrade/keep.d/toofanwrt-firmware"
 	RestorePath  = "/etc/uci-defaults/99-toofanwrt-restore"
 
-	boardFn    = readBoard
-	memAvailFn = memAvailable
-	testFn     = func(img string) (string, error) { return env.Run(2*time.Minute, "sysupgrade", "-T", img) }
-	flashFn    = startSysupgrade
-	pollEvery  = 5 * time.Second
-	buildLimit = 15 * time.Minute
+	boardFn     = readBoard
+	releaseFile = "/etc/openwrt_release"
+	sysinfoDir  = "/tmp/sysinfo"
+	memAvailFn  = memAvailable
+	testFn      = func(img string) (string, error) { return env.Run(2*time.Minute, "sysupgrade", "-T", img) }
+	flashFn     = startSysupgrade
+	pollEvery   = 5 * time.Second
+	buildLimit  = 15 * time.Minute
 )
 
 // Packages the panel needs; the image builder adds them to the new firmware.
@@ -110,7 +112,7 @@ func readBoard() (Board, error) {
 	}
 	out, err := env.Ubus("system", "board", "")
 	if err != nil {
-		return Board{}, err
+		return boardFromFiles(err)
 	}
 	var raw struct {
 		Model     string `json:"model"`
@@ -132,6 +134,42 @@ func readBoard() (Board, error) {
 	}
 	if _, err := os.Stat("/usr/bin/apk"); err == nil {
 		b.PM = "apk"
+	}
+	return b, nil
+}
+
+// boardFromFiles reads the same facts without ubus (procd busy or absent).
+func boardFromFiles(ubusErr error) (Board, error) {
+	rel, err := os.ReadFile(releaseFile)
+	if err != nil {
+		return Board{}, ubusErr
+	}
+	b := Board{PM: "opkg", Compat: "1.0"}
+	for _, l := range strings.Split(string(rel), "\n") {
+		k, v, ok := strings.Cut(l, "=")
+		if !ok {
+			continue
+		}
+		v = strings.Trim(strings.TrimSpace(v), `'"`)
+		switch k {
+		case "DISTRIB_RELEASE":
+			b.Version = v
+		case "DISTRIB_REVISION":
+			b.Revision = v
+		case "DISTRIB_TARGET":
+			b.Target = v
+		}
+	}
+	read := func(p string) string { x, _ := os.ReadFile(p); return strings.TrimSpace(string(x)) }
+	b.BoardName, b.Model = read(sysinfoDir+"/board_name"), read(sysinfoDir+"/model")
+	if c, _ := env.Run(5*time.Second, "uci", "-q", "get", "system.@system[0].compat_version"); c != "" {
+		b.Compat = c
+	}
+	if _, err := os.Stat("/usr/bin/apk"); err == nil {
+		b.PM = "apk"
+	}
+	if b.Version == "" || b.Target == "" || b.BoardName == "" {
+		return Board{}, ubusErr
 	}
 	return b, nil
 }

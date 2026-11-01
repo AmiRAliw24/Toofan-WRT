@@ -332,3 +332,20 @@ func TestRepairMarksMarker(t *testing.T) {
 		t.Fatal("failure not reported")
 	}
 }
+
+func TestBoardFromFiles(t *testing.T) {
+	dir := t.TempDir()
+	releaseFile, sysinfoDir = filepath.Join(dir, "openwrt_release"), dir
+	defer func() { releaseFile, sysinfoDir = "/etc/openwrt_release", "/tmp/sysinfo" }()
+	os.WriteFile(releaseFile, []byte("DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='23.05.4'\nDISTRIB_REVISION='r24012-d8dd03c46f'\nDISTRIB_TARGET='ipq40xx/chromium'\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "board_name"), []byte("google,wifi\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "model"), []byte("Google WiFi (Gale)\n"), 0o644)
+	b, err := boardFromFiles(errors.New("ubus down"))
+	if err != nil || b.Version != "23.05.4" || b.Target != "ipq40xx/chromium" || b.BoardName != "google,wifi" || b.Model != "Google WiFi (Gale)" {
+		t.Fatalf("%+v %v", b, err)
+	}
+	os.Remove(filepath.Join(dir, "board_name"))
+	if _, err := boardFromFiles(errors.New("ubus down")); err == nil {
+		t.Fatal("no board name must be an error, never a guess")
+	}
+}
