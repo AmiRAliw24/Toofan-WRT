@@ -56,7 +56,7 @@ var (
 // LuCI stays in the image as a safety net and is removed after the panel
 // comes back (when it was removed before).
 var (
-	Required = []string{"xray-core", "v2ray-geoip", "v2ray-geosite-ir", "kmod-nft-tproxy", "ca-bundle"}
+	Required = []string{"xray-core", "v2ray-geoip", "v2ray-geosite-ir", "kmod-nft-tproxy", "ca-bundle", "rpcd", "rpcd-mod-iwinfo"}
 	Optional = []string{"openvpn-mbedtls", "miniupnpd-nftables", "tc-tiny", "kmod-sched-cake", "kmod-ifb", "kmod-nft-bridge"}
 )
 

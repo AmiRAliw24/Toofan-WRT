@@ -97,6 +97,9 @@ const removeScript = `
 if command -v apk >/dev/null 2>&1; then
 	P="$(apk info 2>/dev/null | grep -E '^(luci|uhttpd|liblucihttp)')"
 	[ -z "$P" ] && exit 0
+	# apk drops packages nothing needs any more: keep rpcd (the panel's
+	# Wi-Fi queries go through it) by asking for it explicitly.
+	apk add --no-network rpcd rpcd-mod-iwinfo >/dev/null 2>&1 || true
 	apk del $P
 else
 	P="$(opkg list-installed | cut -d' ' -f1 | grep -E '^(luci|uhttpd|liblucihttp)')"

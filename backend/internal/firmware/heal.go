@@ -2,6 +2,7 @@ package firmware
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ if [ -n "$M$O" ]; then
 	if [ -n "$M" ]; then add $M >/dev/null 2>&1 || { echo "could not install:$M" >&2; exit 1; }; fi
 	[ -n "$O" ] && add $O >/dev/null 2>&1
 fi
+[ -x /etc/init.d/rpcd ] && { /etc/init.d/rpcd enable; /etc/init.d/rpcd start; } >/dev/null 2>&1
 [ -x /etc/init.d/xray ] && { /etc/init.d/xray stop; /etc/init.d/xray disable; } >/dev/null 2>&1
 [ -x /etc/init.d/miniupnpd ] && [ "$(uci -q get upnpd.config.enabled)" != "1" ] && /etc/init.d/miniupnpd disable
 echo "installed:$M$O"
@@ -71,11 +73,18 @@ func setHeal(f func(h *Heal)) {
 	healMu.Unlock()
 }
 
-// AfterBoot finishes an upgrade on the first start of the new firmware.
-// It is a no-op on every other start.
+// MissingPath is written by install.sh when packages could not be installed.
+var MissingPath = "/etc/toofanwrt/pkgs-missing"
+
+// AfterBoot finishes an upgrade on the first start of the new firmware, or
+// an install that could not download its packages. It is a no-op otherwise.
 func AfterBoot() {
+	if env.Mock {
+		return
+	}
 	m, err := ReadMarker()
-	if err != nil || m.Healed || env.Mock {
+	_, missing := os.Stat(MissingPath)
+	if (err != nil || m.Healed) && missing != nil {
 		return
 	}
 	go func() {
@@ -115,6 +124,7 @@ func Repair() error {
 		m.Healed, m.HealedAt, m.Result = true, time.Now().Unix(), strings.TrimSpace(out)
 		writeMarker(m)
 	}
+	os.Remove(MissingPath)
 	setHeal(func(h *Heal) { h.State, h.Log = "ok", out })
 	if OnHealed != nil {
 		OnHealed()

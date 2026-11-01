@@ -32,7 +32,7 @@ fi
 
 say "OpenWrt $DISTRIB_RELEASE ($DISTRIB_TARGET), package manager: $PM"
 
-DEPS="xray-core v2ray-geoip v2ray-geosite-ir kmod-nft-tproxy ca-bundle"
+DEPS="xray-core v2ray-geoip v2ray-geosite-ir kmod-nft-tproxy ca-bundle rpcd rpcd-mod-iwinfo"
 MISSING=""
 for p in $DEPS; do pm_has "$p" || MISSING="$MISSING $p"; done
 # Bundled packages first: they work even when downloads.openwrt.org is unreachable.
@@ -49,18 +49,22 @@ if [ -n "$MISSING" ] && [ "$PM" = opkg ] && [ -d "pkgs/$DISTRIB_RELEASE" ]; then
 	for p in $DEPS; do pm_has "$p" || MISSING="$MISSING $p"; done
 fi
 
+# A failed download must not stop the panel update itself: the panel
+# retries the missing packages later (and shows them on the System page).
+PKG_FAILED=""
 if [ -n "$MISSING" ]; then
 	say "installing:$MISSING"
-	if ! pm_update; then
+	if ! pm_update >/dev/null 2>&1; then
 		echo
-		echo "  روتر به downloads.openwrt.org دسترسی ندارد. این‌ها را چک کنید:"
-		echo "    ping -c 3 8.8.8.8                 # اینترنت روتر"
-		echo "    nslookup downloads.openwrt.org    # DNS"
+		echo "  روتر به downloads.openwrt.org دسترسی ندارد؛ پنل نصب می‌شود و بسته‌ها بعداً نصب می‌شوند."
+		echo "  (no access to downloads.openwrt.org; the panel is installed anyway)"
 		echo
-		die "package list update failed"
+		PKG_FAILED="$MISSING"
+	else
+		# shellcheck disable=SC2086
+		pm_install $MISSING || PKG_FAILED="$MISSING"
 	fi
-	# shellcheck disable=SC2086
-	pm_install $MISSING || die "could not install:$MISSING"
+	if [ -n "$PKG_FAILED" ]; then say "could not install:$PKG_FAILED (the panel retries later)"; fi
 fi
 # Optional features: OpenVPN, UPnP, SQM and per-Wi-Fi routing. Failures here are not fatal.
 OPTIONAL="openvpn-mbedtls miniupnpd-nftables tc-tiny kmod-sched-cake kmod-ifb kmod-nft-bridge"
@@ -80,7 +84,6 @@ fi
 # miniupnpd stays off until switched on from the panel.
 [ -x /etc/init.d/miniupnpd ] && [ "$(uci -q get upnpd.config.enabled)" != "1" ] && /etc/init.d/miniupnpd disable 2>/dev/null || true
 
-command -v xray >/dev/null || die "xray binary not found after install"
 # Prefer the bundled Xray when it runs on this router; the package's
 # /usr/bin/xray stays as the fallback. Two bundled engines: the newest one,
 # and 26.3.27 for servers newer releases refuse (VLESS/Trojan without TLS).
@@ -111,6 +114,7 @@ case "$ARCH" in
 		XRAY_COMPAT="$(install_xray bin/xray-compat-armv7 xray-compat)" || XRAY_COMPAT=""
 		;;
 esac
+[ -x "$XRAY" ] || command -v xray >/dev/null || die "no working Xray: the bundled one does not run here and the xray-core package is missing"
 say "xray: $($XRAY version 2>/dev/null | head -1)"
 [ -n "$XRAY_COMPAT" ] && say "xray (compat, for VLESS/Trojan without TLS): $($XRAY_COMPAT version 2>/dev/null | head -1)"
 
@@ -193,6 +197,12 @@ if [ "$(uci -q get firewall.@defaults[0].flow_offloading)" = "1" ]; then
 	uci commit firewall
 	/etc/init.d/firewall reload
 fi
+
+# rpcd answers the panel's Wi-Fi queries (ubus iwinfo).
+[ -x /etc/init.d/rpcd ] && { /etc/init.d/rpcd enable; /etc/init.d/rpcd start; } >/dev/null 2>&1 || true
+# Packages that could not be installed now are retried by the panel.
+mkdir -p /etc/toofanwrt
+if [ -n "$PKG_FAILED" ]; then echo "$PKG_FAILED" > /etc/toofanwrt/pkgs-missing; else rm -f /etc/toofanwrt/pkgs-missing; fi
 
 # Xray's own init script must not start a second copy.
 [ -x /etc/init.d/xray ] && { /etc/init.d/xray stop 2>/dev/null; /etc/init.d/xray disable 2>/dev/null; } || true
