@@ -3,6 +3,7 @@ import { Cpu, HardDrive, KeyRound, MemoryStick, Power, Router, Thermometer } fro
 import { noPassword } from '../app';
 import { post, usePoll, type SystemStats, type WAN } from '../api';
 import { L, bytes, duration, lang, num, pct } from '../i18n';
+import { FirmwareCard } from './Firmware';
 import { LedCard } from './Led';
 import { BackupCard, LuciCard, UpdateCard } from './Maintenance';
 import { LanCard, SystemSettingsCard } from './Network';
@@ -121,6 +122,7 @@ export function System() {
         <UpdateCard />
         <BackupCard />
       </div>
+      <FirmwareCard />
       <LedCard />
       <LuciCard />
     </div>

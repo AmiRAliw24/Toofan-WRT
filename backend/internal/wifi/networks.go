@@ -242,6 +242,7 @@ func SaveNetwork(n SSID) ([]string, error) {
 	}
 	b := uci.NewBatch()
 	var secs []string
+	var radios []string // radios whose start-up proves the change worked
 	put := func(sec string) {
 		p := "wireless." + sec + "."
 		b.Set(p+"ssid", n.SSID)
@@ -316,6 +317,11 @@ func SaveNetwork(n SSID) ([]string, error) {
 		}
 		put(n.Section)
 		secs = []string{n.Section}
+		for _, x := range nets {
+			if x.Section == n.Section && !radioDisabled(x.Radio) {
+				radios = append(radios, x.Radio)
+			}
+		}
 	} else {
 		for _, band := range bandsFor(n.Band) {
 			radio := radioFor[band]
@@ -331,13 +337,13 @@ func SaveNetwork(n SSID) ([]string, error) {
 			n.Enabled = true
 			put(sec)
 			secs = append(secs, sec)
+			radios = append(radios, radio)
 		}
 	}
-	if err := b.Commit(); err != nil {
+	if err := applyRadios(b, radios, 30*time.Second); err != nil {
 		return nil, err
 	}
-	_, err = env.Run(30*time.Second, "wifi", "reload")
-	return secs, err
+	return secs, nil
 }
 
 func bandsFor(b string) []string {
@@ -372,11 +378,11 @@ func DeleteNetwork(section string) error {
 			if n.Primary {
 				return errors.New("the main network can only be turned off")
 			}
-			if err := uci.NewBatch().Delete("wireless." + section).Commit(); err != nil {
-				return err
+			var radios []string
+			if !radioDisabled(n.Radio) {
+				radios = []string{n.Radio}
 			}
-			_, err := env.Run(30*time.Second, "wifi", "reload")
-			return err
+			return applyRadios(uci.NewBatch().Delete("wireless."+section), radios, 30*time.Second)
 		}
 	}
 	return errors.New("network not found")
@@ -388,6 +394,7 @@ type RadioSettings struct {
 	Channel string `json:"channel"` // "auto" or number
 	HTMode  string `json:"htmode"`  // channel width
 	TxPower int    `json:"txpower"` // dBm, 0 = maximum allowed
+	Country string `json:"country"` // regulatory domain, set on every radio; "" = keep
 }
 
 var htModes = map[string]bool{"HT20": true, "HT40": true, "VHT20": true, "VHT40": true, "VHT80": true, "VHT160": true, "HE20": true, "HE40": true, "HE80": true}
@@ -404,24 +411,38 @@ func SetRadio(r RadioSettings) error {
 	if r.TxPower < 0 || r.TxPower > 30 {
 		return errors.New("transmit power must be 0-30 dBm")
 	}
+	if r.Country != "" && !countryRe.MatchString(r.Country) {
+		return errors.New("invalid country code")
+	}
 	if env.Mock {
 		return nil
 	}
 	if _, err := env.Run(3*time.Second, "uci", "-q", "get", "wireless."+r.Radio); err != nil {
-		return errors.New("radio not found")
+		return errNoRadio
 	}
 	b := uci.NewBatch().Set("wireless."+r.Radio+".channel", r.Channel)
-	if r.HTMode != "" {
-		b.Set("wireless."+r.Radio+".htmode", r.HTMode)
+	if w := fixWidth(radioBand(r.Radio), r.Channel, r.HTMode); w != "" {
+		b.Set("wireless."+r.Radio+".htmode", w)
 	}
 	if r.TxPower > 0 {
 		b.Set("wireless."+r.Radio+".txpower", strconv.Itoa(r.TxPower))
 	} else {
 		b.Delete("wireless." + r.Radio + ".txpower")
 	}
-	if err := b.Commit(); err != nil {
-		return err
+	radios := []string{r.Radio}
+	if r.Country != "" {
+		// Every radio must share one country, or the driver picks one.
+		st, _ := Get()
+		radios = radios[:0]
+		for _, band := range st.Bands {
+			b.Set("wireless."+band.Radio+".country", r.Country)
+			if band.Enabled {
+				radios = append(radios, band.Radio)
+			}
+		}
 	}
-	_, err := env.Run(30*time.Second, "wifi", "reload")
-	return err
+	if radioDisabled(r.Radio) {
+		radios = nil
+	}
+	return applyRadios(b, radios, waitFor(r.Channel))
 }

@@ -108,6 +108,9 @@ type DNS struct {
 	// Block malware, phishing and crypto-mining sites (needs the
 	// downloaded geo files; applies to traffic through the tunnel).
 	BlockMalware bool `json:"blockMalware"`
+	// ClientDNS lets devices keep the DNS they set themselves; by default
+	// every DNS query on the LAN is answered by the router.
+	ClientDNS bool `json:"clientDns"`
 }
 
 // Geo data (chocolate4u/Iran-v2ray-rules) update policy.

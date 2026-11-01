@@ -94,17 +94,28 @@ func keepOffPort80() error {
 // them back.
 const removeScript = `
 [ -x /etc/init.d/uhttpd ] && { /etc/init.d/uhttpd stop; /etc/init.d/uhttpd disable; } 2>/dev/null
-P="$(opkg list-installed | cut -d' ' -f1 | grep -E '^(luci|uhttpd|liblucihttp)')"
-[ -z "$P" ] && exit 0
-opkg remove $P || opkg remove --force-depends $P
+if command -v apk >/dev/null 2>&1; then
+	P="$(apk info 2>/dev/null | grep -E '^(luci|uhttpd|liblucihttp)')"
+	[ -z "$P" ] && exit 0
+	apk del $P
+else
+	P="$(opkg list-installed | cut -d' ' -f1 | grep -E '^(luci|uhttpd|liblucihttp)')"
+	[ -z "$P" ] && exit 0
+	opkg remove $P || opkg remove --force-depends $P
+fi
 rm -rf /www/luci-static /www/cgi-bin/luci /tmp/luci-*
 [ -f /www/index.html ] && grep -q luci /www/index.html && rm -f /www/index.html
 exit 0
 `
 
 const installScript = `
-opkg update >/dev/null 2>&1 || { echo "no access to the package server (downloads.openwrt.org)" >&2; exit 1; }
-opkg install luci || opkg install luci-light
+if command -v apk >/dev/null 2>&1; then
+	apk update >/dev/null 2>&1 || { echo "no access to the package server (downloads.openwrt.org)" >&2; exit 1; }
+	apk add luci || apk add luci-light
+else
+	opkg update >/dev/null 2>&1 || { echo "no access to the package server (downloads.openwrt.org)" >&2; exit 1; }
+	opkg install luci || opkg install luci-light
+fi
 `
 
 // Remove uninstalls LuCI in the background.

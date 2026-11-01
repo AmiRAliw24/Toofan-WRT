@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"toofanwrt/internal/firmware"
 
 	"toofanwrt/internal/config"
 	"toofanwrt/internal/devices"
@@ -109,6 +110,12 @@ func (c *Core) Start() {
 	go c.infoLoop()
 	go c.speedLoop()
 	go c.geoLoop()
+	firmware.RemoveLuci = luci.Remove
+	firmware.OnHealed = func() {
+		c.RequestApply()
+		c.Proxy.Kick()
+	}
+	firmware.AfterBoot()
 }
 
 // iran returns the Iranian IPv4 ranges loaded from geoip.dat.
@@ -416,6 +423,7 @@ func (c *Core) apply() {
 		LockWAN:    cfg.LockWAN,
 		WANDev:     c.Sampler.WAN().Device,
 		PanelPorts: append(append([]int{}, c.PanelPorts...), luci.AltPort),
+		ForceDNS:   !cfg.DNS.ClientDNS,
 	}
 	switch {
 	case cfg.Proxy.IranMode == config.IranDirect:

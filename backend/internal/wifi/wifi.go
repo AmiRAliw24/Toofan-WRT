@@ -244,9 +244,14 @@ func SetBand(in Band) error {
 	if ch == "" {
 		ch = "auto"
 	}
+	if ch != "auto" {
+		if n, err := strconv.Atoi(ch); err != nil || n < 1 || n > 196 {
+			return errors.New("invalid channel")
+		}
+	}
 	b.Set(r+"channel", ch)
-	if in.HTMode != "" {
-		b.Set(r+"htmode", in.HTMode)
+	if w := fixWidth(cur.Band, ch, firstNonEmpty(in.HTMode, cur.HTMode)); w != "" {
+		b.Set(r+"htmode", w)
 	}
 	if in.TxPower > 0 {
 		b.Set(r+"txpower", strconv.Itoa(in.TxPower))
@@ -278,10 +283,20 @@ func SetBand(in Band) error {
 	if strings.HasPrefix(in.Encryption, "sae") {
 		b.Set(p+"ieee80211w", "1") // management frame protection, needed by WPA3
 	}
-	if err := b.Commit(); err != nil {
-		return err
+	var radios []string
+	if in.Enabled {
+		radios = []string{cur.Radio}
 	}
-	return reloadWifi()
+	return applyRadios(b, radios, waitFor(ch))
+}
+
+func firstNonEmpty(s ...string) string {
+	for _, x := range s {
+		if x != "" {
+			return x
+		}
+	}
+	return ""
 }
 
 func reloadWifi() error {
@@ -307,10 +322,16 @@ func SetChannel(band string, channel int) error {
 	}
 	for _, b := range st.Bands {
 		if b.Band == band {
-			if err := uci.NewBatch().Set("wireless."+b.Radio+".channel", strconv.Itoa(channel)).Commit(); err != nil {
-				return err
+			ch := strconv.Itoa(channel)
+			batch := uci.NewBatch().Set("wireless."+b.Radio+".channel", ch)
+			if w := fixWidth(b.Band, ch, b.HTMode); w != "" && w != b.HTMode {
+				batch.Set("wireless."+b.Radio+".htmode", w)
 			}
-			return reloadWifi()
+			var radios []string
+			if b.Enabled {
+				radios = []string{b.Radio}
+			}
+			return applyRadios(batch, radios, waitFor(ch))
 		}
 	}
 	return errors.New("band not found")

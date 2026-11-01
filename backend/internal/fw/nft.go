@@ -55,6 +55,10 @@ type Plan struct {
 	LockWAN       bool     // drop panel/SSH/LuCI connections arriving from the WAN
 	WANDev        string
 	PanelPorts    []int
+	// ForceDNS answers every client DNS query (port 53, any server) from the
+	// router, so the DNS chosen in the panel applies to devices that have
+	// their own DNS set (8.8.8.8 on a phone, a PC's adapter settings …).
+	ForceDNS bool
 }
 
 var privateNets = []string{
@@ -146,6 +150,9 @@ func Render(p Plan) string {
 		fmt.Fprintf(&b, "\t\tiifname != { %s } return\n", quoteList(p.LANIfaces))
 		b.WriteString("\t\tmeta nfproto ipv6 return\n")
 		b.WriteString("\t\tip daddr @private4 return\n")
+		if p.ForceDNS {
+			b.WriteString("\t\tmeta l4proto { tcp, udp } th dport 53 return\n")
+		}
 		b.WriteString("\t\tether saddr @bypass_mac return\n")
 		fmt.Fprintf(&b, "\t\tmeta mark & 0x%x == 0x%x return\n", DirectMark, DirectMark)
 		if block {
@@ -162,6 +169,14 @@ func Render(p Plan) string {
 		b.WriteString("\tchain iran_block {\n\t\ttype filter hook forward priority filter - 5; policy accept;\n")
 		fmt.Fprintf(&b, "\t\tmeta mark & 0x%x == 0x%x meta l4proto tcp reject with tcp reset\n", IranBlockMark, IranBlockMark)
 		fmt.Fprintf(&b, "\t\tmeta mark & 0x%x == 0x%x reject with icmpx type admin-prohibited\n", IranBlockMark, IranBlockMark)
+		b.WriteString("\t}\n")
+	}
+
+	if p.ForceDNS && len(all) > 0 {
+		b.WriteString("\tchain dns_force {\n\t\ttype nat hook prerouting priority dstnat - 5; policy accept;\n")
+		fmt.Fprintf(&b, "\t\tiifname != %s return\n", allIf)
+		b.WriteString("\t\tfib daddr type local return\n")
+		b.WriteString("\t\tmeta l4proto { tcp, udp } th dport 53 counter redirect to :53\n")
 		b.WriteString("\t}\n")
 	}
 

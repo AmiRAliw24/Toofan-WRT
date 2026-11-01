@@ -20,6 +20,7 @@ func (s *Server) registerCores(api *http.ServeMux) {
 	api.HandleFunc("GET /api/xray/releases", s.xrayReleases)
 	api.HandleFunc("POST /api/xray/install", s.xrayInstall)
 	api.HandleFunc("POST /api/xray/rollback", s.xrayRollback)
+	s.registerFirmware(api)
 }
 
 func (s *Server) xrayGet(w http.ResponseWriter, r *http.Request) {

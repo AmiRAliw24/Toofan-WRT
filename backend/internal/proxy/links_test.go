@@ -211,3 +211,54 @@ func TestNoGeoIPRuleWithoutGeoIP(t *testing.T) {
 		t.Fatal("geoip:ir missing although geoip.dat is installed and there is no kernel set")
 	}
 }
+
+// A chosen domestic DNS (Shecan) answers Iranian names first, outside the
+// tunnel, in every Iran mode except block.
+func TestDomesticDNSAnswersIranianNames(t *testing.T) {
+	s, _ := ParseLink(sampleLinks[0])
+	shecan := DomesticDNSFor(config.DNS{Provider: "shecan"})
+	if len(shecan) != 2 {
+		t.Fatalf("shecan servers: %v", shecan)
+	}
+	if DomesticDNSFor(config.DNS{Provider: "cloudflare"}) != nil {
+		t.Fatal("cloudflare is not domestic")
+	}
+	for _, mode := range []string{config.IranDirect, config.IranTunnel} {
+		data, _, err := BuildConfig(BuildOpts{Server: s, IranMode: mode, GeoSite: true, ISPDNS: []string{"192.168.8.1"}, IranDNS: shecan})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cfg struct {
+			DNS struct {
+				Servers []any `json:"servers"`
+			} `json:"dns"`
+			Routing struct {
+				Rules []map[string]any `json:"rules"`
+			} `json:"routing"`
+		}
+		json.Unmarshal(data, &cfg)
+		first, _ := cfg.DNS.Servers[0].(map[string]any)
+		if first == nil || first["address"] != shecan[0] {
+			t.Fatalf("%s: first DNS server should be Shecan, got %v", mode, cfg.DNS.Servers[0])
+		}
+		if doms := fmt.Sprint(first["domains"]); !strings.Contains(doms, "geosite:ir") {
+			t.Fatalf("%s: Shecan must answer Iranian names: %s", mode, doms)
+		}
+		direct := false
+		for _, r := range cfg.Routing.Rules {
+			if r["port"] == "53" && strings.Contains(fmt.Sprint(r["ip"]), shecan[0]) && r["outboundTag"] == "direct" {
+				direct = true
+			}
+		}
+		if !direct {
+			t.Fatalf("%s: queries to Shecan must go out directly, not through the tunnel", mode)
+		}
+		if strings.Contains(string(data), "78.157.42.100") {
+			t.Fatalf("%s: default Iranian resolvers must not be used when one is chosen", mode)
+		}
+	}
+	data, _, _ := BuildConfig(BuildOpts{Server: s, IranMode: config.IranBlock, GeoSite: true, IranDNS: shecan})
+	if strings.Contains(string(data), shecan[0]) {
+		t.Fatal("block mode needs no Iranian DNS")
+	}
+}

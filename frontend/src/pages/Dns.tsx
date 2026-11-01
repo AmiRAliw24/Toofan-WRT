@@ -6,7 +6,7 @@ import { L, lang } from '../i18n';
 import { Badge, Btn, Card, CardHead, Field, PageHead, Setting, Skeleton, Toggle, run } from '../ui';
 
 interface Provider { id: string; name: string; nameFa: string; servers: string[] | null; doh?: string; domestic: boolean }
-interface DnsCfg { provider: string; custom: string; mode: string; blockAds: boolean; blockMalware?: boolean; logSites: boolean }
+interface DnsCfg { provider: string; custom: string; mode: string; blockAds: boolean; blockMalware?: boolean; logSites: boolean; clientDns?: boolean }
 interface DnsResp { config: DnsCfg; providers: Provider[]; tunnel: boolean; isp: string[] | null; lockWan: boolean }
 
 export function Dns() {
@@ -24,23 +24,29 @@ export function Dns() {
   return (
     <div class="stack">
       <PageHead title={L('DNS و امنیت', 'DNS & security')} sub={L('انتخاب DNS، رمزنگاری آن و مسدودسازی تبلیغات', 'Choose your DNS, encrypt it and block ads')} />
-      {data.tunnel ? (
-        <div class="callout ok"><Lock size={20} /><div>
-          <b>{L('DNS هوشمند (همراه اینترنت آزاد) فعال است', 'Smart DNS (with free internet) is active')}</b>
-          {L('نام سایت‌های ایرانی را DNS اپراتور می‌دهد و بقیه رمزنگاری‌شده (DoH) از داخل تونل پرسیده می‌شود؛ پس اپراتور نمی‌تواند جواب‌ها را دست‌کاری کند.',
-            'Iranian names are resolved by your ISP; everything else is asked encrypted (DoH) through the tunnel, so the ISP can’t tamper with answers.')}
-        </div></div>
-      ) : (
-        <div class="callout info"><Info size={20} /><div>
-          <b>{L('چرا ممکن است DNS انتخابی شما اعمال نشود؟', 'Why your choice may not take effect')}</b>
-          {L('بیشتر اپراتورهای ایران درخواست‌های DNS معمولی (پورت ۵۳) را می‌ربایند و خودشان جواب می‌دهند. وقتی اینترنت آزاد روشن است این مشکل وجود ندارد.',
-            'Most Iranian ISPs hijack plain DNS (port 53) and answer themselves. With the free internet on, this doesn’t apply.')}
-        </div></div>
-      )}
+      {(() => {
+        const domestic = !!chosen && chosen.domestic && chosen.id !== 'isp';
+        const name = (p?: Provider) => p ? (lang.value === 'fa' ? p.nameFa : p.name) : L('دلخواه', 'Custom');
+        const iran = domestic ? name(chosen) : L('DNS اپراتور', 'your ISP DNS');
+        const foreign = data.tunnel ? (domestic || c.provider === 'isp' ? L('کلادفلر (DoH از داخل تونل)', 'Cloudflare (DoH through the tunnel)') : name(chosen) + L(' (DoH از داخل تونل)', ' (DoH through the tunnel)')) : '';
+        return data.tunnel ? (
+          <div class="callout ok"><Lock size={20} /><div>
+            <b>{L('DNS هوشمند (همراه اینترنت آزاد) فعال است', 'Smart DNS (with free internet) is active')}</b>
+            <div>{L('سایت‌های ایرانی: ', 'Iranian sites: ')}<b>{iran}</b>{L(' · بقیهٔ سایت‌ها: ', ' · Everything else: ')}<b>{foreign}</b></div>
+            {L('اپراتور نمی‌تواند جواب سایت‌های خارجی را دست‌کاری کند.', 'The ISP can’t tamper with answers for foreign sites.')}
+          </div></div>
+        ) : (
+          <div class="callout info"><Info size={20} /><div>
+            <b>{L('همهٔ سایت‌ها با ', 'All sites are resolved by ')}{c.provider === 'isp' ? L('DNS اپراتور', 'your ISP DNS') : name(chosen)}{L(' پیدا می‌شوند', '')}</b>
+            {L('بیشتر اپراتورهای ایران درخواست‌های DNS معمولی (پورت ۵۳) را می‌ربایند و خودشان جواب می‌دهند. وقتی اینترنت آزاد روشن است این مشکل وجود ندارد.',
+              'Most Iranian ISPs hijack plain DNS (port 53) and answer themselves. With the free internet on, this doesn’t apply.')}
+          </div></div>
+        );
+      })()}
       <Card>
         <CardHead icon={<Globe2 size={20} />} title="DNS"
           sub={data.tunnel
-            ? L('سرویس‌دهندهٔ انتخابی، داخل تونل و رمزنگاری‌شده استفاده می‌شود (سرویس‌های داخلی مثل شکن داخل تونل معنی ندارند و کلادفلر جایگزین می‌شود)', 'Your choice is used inside the tunnel, encrypted (domestic services like Shecan make no sense there; Cloudflare is used instead)')
+            ? L('DNSهای داخلی مثل شکن برای سایت‌های ایرانی (مستقیم) استفاده می‌شوند و بقیه رمزنگاری‌شده از تونل؛ DNSهای خارجی برای همه از داخل تونل', 'Domestic DNS like Shecan answers Iranian sites (direct) and the rest goes encrypted through the tunnel; foreign DNS answers everything through the tunnel')
             : L('تعیین می‌کند آدرس سایت‌ها چطور پیدا شوند', 'Decides how site names are looked up')}
           action={<Badge tone={data.tunnel ? 'ok' : undefined}>{data.tunnel ? 'DoH' : 'UDP 53'}</Badge>} />
         <div class="card-body">
@@ -84,6 +90,13 @@ export function Dns() {
           {chosen && !data.tunnel && chosen.domestic && chosen.id !== 'isp' && (
             <div class="tiny muted" style="margin-top:12px">{L('DNSهای ضدتحریم فقط تحریم سایت‌ها را دور می‌زنند، نه فیلترینگ را.', 'Anti-sanction DNS only bypasses sanctions, not censorship.')}</div>
           )}
+          <div style="margin-top:6px">
+            <Setting title={L('همهٔ دستگاه‌ها از DNS روتر استفاده کنند', 'Make every device use the router’s DNS')}
+              desc={L('اگر روی گوشی یا کامپیوتر DNS دستی (مثلاً 8.8.8.8) گذاشته شده باشد، باز هم جواب را روتر با DNS انتخابی بالا می‌دهد. «DNS امن» مرورگر (Secure DNS) و Private DNS اندروید را هم خاموش کنید، وگرنه از روتر رد می‌شوند.',
+                'Even if a phone or PC has a manual DNS (e.g. 8.8.8.8), the router answers with the DNS chosen above. Also turn off the browser’s Secure DNS and Android’s Private DNS, or they skip the router.')}>
+              <Toggle on={!c.clientDns} onChange={(v) => save({ clientDns: !v })} />
+            </Setting>
+          </div>
         </div>
       </Card>
       <Card>

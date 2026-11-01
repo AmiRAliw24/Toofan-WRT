@@ -4,8 +4,10 @@
 package fetch
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -162,4 +164,48 @@ func SHA256Line(dgst string) string {
 		}
 	}
 	return FindSHA256(dgst)
+}
+
+// JSON sends a request with an optional JSON body and decodes the JSON
+// answer into out, direct first and then via the tunnel. Unlike Get it
+// returns any HTTP status with the body decoded, because APIs (OpenWrt's
+// image builder) put the reason for a refusal in it.
+func JSON(method, rawURL string, body, out any, timeout time.Duration) (int, error) {
+	var payload []byte
+	if body != nil {
+		var err error
+		if payload, err = json.Marshal(body); err != nil {
+			return 0, err
+		}
+	}
+	var lastErr error
+	for _, tunnel := range []bool{false, true} {
+		if tunnel && SocksPort == 0 {
+			break
+		}
+		req, _ := http.NewRequest(method, rawURL, bytes.NewReader(payload))
+		req.Header.Set("User-Agent", "ToofanWrt")
+		req.Header.Set("Accept", "application/json")
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := client(tunnel, timeout).Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if out != nil && len(b) > 0 {
+			if err := json.Unmarshal(b, out); err != nil {
+				return resp.StatusCode, fmt.Errorf("HTTP %d: bad JSON answer", resp.StatusCode)
+			}
+		}
+		return resp.StatusCode, nil
+	}
+	return 0, lastErr
 }

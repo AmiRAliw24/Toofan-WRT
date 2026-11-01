@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import qrcode from 'qrcode-generator';
 import { AlertTriangle, Layers, Pencil, Plus, QrCode, Radar, Save, Shield, ShieldOff, SlidersHorizontal, Sparkles, Trash2, UserPlus, Wifi } from 'lucide-preact';
-import { del, post, usePoll } from '../api';
+import { del, get, post, usePoll } from '../api';
 import { onRefresh } from '../app';
 import { L, digits, lang, num } from '../i18n';
 import { Badge, Btn, Card, CardHead, Field, Modal, PageHead, Password, Seg, Setting, Skeleton, Tabs, Toggle, confirmDialog, run, toast } from '../ui';
@@ -83,19 +83,41 @@ function LiveInfo({ live, band }: { live?: Live | null; band: string }) {
   );
 }
 
+const isDFS = (c: number) => c >= 52 && c <= 144;
+
+// Channel options; DFS channels need a one-minute radar check first.
+function channelOptions(list: number[] | null) {
+  return (list || []).map((c) => (
+    <option value={String(c)}>{c}{isDFS(c) ? L(' (DFS · ۱ دقیقه انتظار)', ' (DFS · 1 min wait)') : ''}</option>
+  ));
+}
+
+const countries = () => [
+  { id: 'IR', l: L('ایران', 'Iran') }, { id: 'US', l: L('آمریکا', 'United States') }, { id: 'DE', l: L('آلمان', 'Germany') },
+  { id: 'GB', l: L('انگلستان', 'United Kingdom') }, { id: 'AE', l: L('امارات', 'UAE') }, { id: 'TR', l: L('ترکیه', 'Türkiye') },
+  { id: 'NL', l: L('هلند', 'Netherlands') }, { id: 'CA', l: L('کانادا', 'Canada') }, { id: '00', l: L('جهانی (محدودترین)', 'World (most restrictive)') },
+];
+
 function RadioCard({ b, onSaved }: { b: Band; onSaved: () => void }) {
-  const [f, setF] = useState({ channel: b.channel || 'auto', htmode: b.htmode || '', txpower: b.txpower || 0 });
+  const init = () => ({ channel: b.channel || 'auto', htmode: b.htmode || '', txpower: b.txpower || 0 });
+  const [f, setF] = useState(init);
+  const [country, setCountry] = useState('');
+  const [origCountry, setOrigCountry] = useState('');
   const [busy, setBusy] = useState(false);
+  // Follow the router: a channel saved elsewhere must not come back from here.
+  useEffect(() => setF(init()), [b.radio, b.channel, b.htmode, b.txpower]);
+  useEffect(() => { get<{ country: string }>('/wifi').then((w) => { setCountry(w.country || ''); setOrigCountry(w.country || ''); }).catch(() => {}); }, []);
+  const dfs = isDFS(+f.channel);
   return (
     <details class="adv">
       <summary><Radar size={16} />{L('تنظیمات رادیو', 'Radio settings')} · {b.band === '5g' ? L('۵ گیگ', '5 GHz') : L('۲٫۴ گیگ', '2.4 GHz')}
         <span class="tiny faint" style="margin-inline-start:auto">{L('برای همهٔ شبکه‌های این باند', 'applies to every network on this band')}</span></summary>
       <div class="stack" style="gap:12px;padding-top:12px">
-        <div class="grid g3" style="gap:12px">
+        <div class="grid g2" style="gap:12px">
           <Field label={L('کانال', 'Channel')}>
             <select class="select" value={f.channel} onChange={(e) => setF({ ...f, channel: (e.target as HTMLSelectElement).value })}>
               <option value="auto">{L('خودکار', 'Automatic')}</option>
-              {(b.channels || []).map((c) => <option value={String(c)}>{digits(c)}</option>)}
+              {channelOptions(b.channels)}
             </select>
           </Field>
           <Field label={L('پهنای کانال', 'Channel width')} hint={L('پهن‌تر = سریع‌تر، ولی تداخل بیشتر', 'Wider = faster, but more interference')}>
@@ -106,16 +128,26 @@ function RadioCard({ b, onSaved }: { b: Band; onSaved: () => void }) {
           <Field label={L('توان ارسال', 'Transmit power')} hint={L('کمتر = برد کمتر و تداخل کمتر با همسایه‌ها', 'Lower = shorter range, less interference')}>
             <select class="select" value={String(f.txpower)} onChange={(e) => setF({ ...f, txpower: +(e.target as HTMLSelectElement).value })}>
               <option value="0">{L('حداکثر مجاز', 'Maximum allowed')}</option>
-              {[23, 20, 17, 14, 11, 8].map((d) => <option value={String(d)}>{digits(d)} dBm</option>)}
+              {[23, 20, 17, 14, 11, 8].map((d) => <option value={String(d)}>{d} dBm</option>)}
+            </select>
+          </Field>
+          <Field label={L('کشور (قوانین فرکانس)', 'Country (frequency rules)')} hint={L('کانال‌های مجاز به کشور بستگی دارد؛ برای هر دو باند', 'Allowed channels depend on it; applies to both bands')}>
+            <select class="select" value={country} onChange={(e) => setCountry((e.target as HTMLSelectElement).value)}>
+              {!countries().some((c) => c.id === country) && <option value={country}>{country || L('تنظیم نشده', 'Not set')}</option>}
+              {countries().map((c) => <option value={c.id}>{c.l} ({c.id})</option>)}
             </select>
           </Field>
         </div>
+        {dfs && <div class="callout warn small"><div>{L('کانال‌های 52 تا 144 (DFS) قبل از شروع، یک دقیقه رادار را بررسی می‌کنند؛ در این مدت این باند خاموش است. اگر روتر رادار ببیند، خودش کانال را عوض می‌کند.', 'Channels 52–144 (DFS) listen for radar for a minute before starting; this band is off meanwhile. If radar is detected the router moves to another channel.')}</div></div>}
+        <div class="tiny faint">{L('بعد از ذخیره، روتر صبر می‌کند تا رادیو با تنظیمات جدید بالا بیاید؛ اگر بالا نیاید، تنظیمات قبلی خودکار برمی‌گردد.', 'After saving, the router waits for the radio to come up on the new settings; if it does not, the previous settings come back automatically.')}</div>
         <div><Btn sm kind="primary" busy={busy} onClick={async () => {
           setBusy(true);
-          const ok = await run(() => post('/wifi/radio', { radio: b.radio, ...f }), L('ذخیره شد؛ وای‌فای این باند چند ثانیه قطع می‌شود', 'Saved; this band restarts for a few seconds'));
+          const body: Record<string, unknown> = { radio: b.radio, ...f };
+          if (country && country !== origCountry) body.country = country;
+          const ok = await run(() => post('/wifi/radio', body), L('ذخیره شد و رادیو با تنظیمات جدید روشن است', 'Saved; the radio is up on the new settings'));
           setBusy(false);
-          if (ok) onSaved();
-        }}><Save size={15} />{L('ذخیرهٔ تنظیمات رادیو', 'Save radio settings')}</Btn></div>
+          if (ok) { setOrigCountry(country); onSaved(); }
+        }}><Save size={15} />{busy ? (dfs ? L('در حال بررسی رادار (تا ۱ دقیقه)…', 'Radar check (up to 1 min)…') : L('در حال اعمال…', 'Applying…')) : L('ذخیرهٔ تنظیمات رادیو', 'Save radio settings')}</Btn></div>
       </div>
     </details>
   );
@@ -148,7 +180,7 @@ function BandForm({ b, onSaved, net, routing, onRoute }: { b: Band; onSaved: () 
   const save = async () => {
     if (f.encryption === 'none' && !(await confirmDialog(L('شبکهٔ بدون رمز یعنی هر کسی در همسایگی می‌تواند وصل شود. ادامه می‌دهید؟', 'An open network lets anyone nearby join. Continue?'), true))) return;
     setBusy(true);
-    const ok = await run(() => post('/wifi/band', f), L('ذخیره شد؛ وای‌فای چند ثانیه قطع و وصل می‌شود', 'Saved; Wi-Fi restarts for a few seconds'));
+    const ok = await run(() => post('/wifi/band', f), L('ذخیره شد و وای‌فای با تنظیمات جدید روشن است', 'Saved; Wi-Fi is up on the new settings'));
     setBusy(false);
     if (ok) onSaved();
   };
@@ -180,7 +212,7 @@ function BandForm({ b, onSaved, net, routing, onRoute }: { b: Band; onSaved: () 
           <Field label={L('کانال', 'Channel')}>
             <select class="select" value={f.channel} onChange={(e) => up({ channel: (e.target as HTMLSelectElement).value })}>
               <option value="auto">{L('خودکار', 'Automatic')}</option>
-              {(f.channels || []).map((c) => <option value={String(c)}>{digits(c)}</option>)}
+              {channelOptions(f.channels)}
             </select>
           </Field>
         </div>

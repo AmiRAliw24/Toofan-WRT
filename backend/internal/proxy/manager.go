@@ -626,6 +626,7 @@ func (m *Manager) start(cfg config.Proxy, id string, force bool) error {
 		BlockAds:     full.DNS.BlockAds,
 		ISPDNS:       m.isp(),
 		SecureDNS:    SecureDNSFor(full.DNS),
+		IranDNS:      DomesticDNSFor(full.DNS),
 		HaveIran:     geo.HasAsset("iran.dat"),
 		HaveGeoIP:    geo.HasAsset("geoip.dat"),
 		GeoSite:      geo.Downloaded(),
@@ -750,7 +751,7 @@ func (m *Manager) lastOpts(srv config.Server) BuildOpts {
 		hosts = append(hosts, s.Address)
 	}
 	return BuildOpts{Server: srv, IranMode: cfg.Proxy.IranMode, BlockAds: cfg.DNS.BlockAds, ISPDNS: m.isp(),
-		SecureDNS: SecureDNSFor(cfg.DNS), HaveIran: geo.HasAsset("iran.dat"), HaveGeoIP: geo.HasAsset("geoip.dat"),
+		SecureDNS: SecureDNSFor(cfg.DNS), IranDNS: DomesticDNSFor(cfg.DNS), HaveIran: geo.HasAsset("iran.dat"), HaveGeoIP: geo.HasAsset("geoip.dat"),
 		GeoSite: geo.Downloaded(), BlockMalware: cfg.DNS.BlockMalware,
 		KernelIran: m.KernelIran != nil && m.KernelIran(), AllHosts: hosts}
 }

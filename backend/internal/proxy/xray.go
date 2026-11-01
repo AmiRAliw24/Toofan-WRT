@@ -43,8 +43,11 @@ type BuildOpts struct {
 	BlockAds  bool
 	ISPDNS    []string // resolvers of the upstream line, used for Iranian names
 	SecureDNS []string // resolvers used through the tunnel
-	HaveIran  bool     // iran.dat is installed
-	HaveGeoIP bool     // geoip.dat is installed (for geoip:ir without the kernel set)
+	// IranDNS: the domestic DNS the user chose (Shecan, Electro, …); it
+	// answers Iranian names first, outside the tunnel.
+	IranDNS   []string
+	HaveIran  bool // iran.dat is installed
+	HaveGeoIP bool // geoip.dat is installed (for geoip:ir without the kernel set)
 	// GeoSite: the chocolate4u geosite.dat/geoip.dat are installed, which
 	// carry geosite:ir, category-ads-all, malware, phishing, … (preferred
 	// over the packaged iran.dat).
@@ -118,12 +121,27 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 	// recognised as Iranian (and may not even be reachable from Iran). So
 	// they are asked of the line's own resolvers, then of Iranian public
 	// ones, never of foreign resolvers.
+	// A chosen domestic DNS answers Iranian names even when Iranian traffic
+	// goes through the tunnel (blocked sites need no answers).
+	dnsIran := iranDoms
+	if dnsIran == nil && len(o.IranDNS) > 0 && o.IranMode != config.IranBlock {
+		dnsIran = iranDomains(o)
+	}
 	var dnsServers []any
 	directDNS := append([]string{}, isp...)
+	for _, ip := range o.IranDNS {
+		if len(dnsIran) == 0 {
+			break
+		}
+		dnsServers = append(dnsServers, map[string]any{
+			"address": ip, "port": 53, "domains": dnsIran, "skipFallback": true,
+		})
+		directDNS = append(directDNS, ip)
+	}
 	for _, ip := range isp {
 		doms := hostDoms
 		if !foreignResolver[ip] {
-			doms = append(append([]string{}, hostDoms...), iranDoms...)
+			doms = append(append([]string{}, hostDoms...), dnsIran...)
 		}
 		if len(doms) > 0 {
 			dnsServers = append(dnsServers, map[string]any{
@@ -131,10 +149,10 @@ func BuildConfig(o BuildOpts) (cfgJSON []byte, baseFP string, err error) {
 			})
 		}
 	}
-	if len(iranDoms) > 0 {
+	if len(dnsIran) > 0 && len(o.IranDNS) == 0 {
 		for _, ip := range iranResolvers {
 			dnsServers = append(dnsServers, map[string]any{
-				"address": ip, "port": 53, "domains": iranDoms, "skipFallback": true,
+				"address": ip, "port": 53, "domains": dnsIran, "skipFallback": true,
 			})
 			directDNS = append(directDNS, ip)
 		}

@@ -52,7 +52,9 @@ func TestNftSyntax(t *testing.T) {
 	blocked.IranBlock = true
 	blockedOff := blocked
 	blockedOff.TProxy = false
-	for _, p := range []Plan{samplePlan(), blocked, blockedOff, {}, {LANIfaces: []string{"br-lan"}}} {
+	forced := samplePlan()
+	forced.ForceDNS = true
+	for _, p := range []Plan{samplePlan(), blocked, blockedOff, forced, {}, {LANIfaces: []string{"br-lan"}, ForceDNS: true}} {
 		cmd := exec.Command("nft", "-c", "-f", "-")
 		cmd.Stdin = strings.NewReader(Render(p) + RenderBridge(p))
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -77,5 +79,24 @@ func TestRenderIranBlock(t *testing.T) {
 	}
 	if strings.Contains(s, "tproxy ip") {
 		t.Error("no capture while the tunnel is down")
+	}
+}
+
+func TestRenderForceDNS(t *testing.T) {
+	p := samplePlan()
+	p.ForceDNS = true
+	s := Render(p)
+	for _, want := range []string{"th dport 53 return", "th dport 53 counter redirect to :53", "fib daddr type local return"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %q in\n%s", want, s)
+		}
+	}
+	// The DNS bypass must come before the TPROXY capture.
+	if strings.Index(s, "th dport 53 return") > strings.Index(s, "tproxy ip to") {
+		t.Fatal("port 53 captured by TPROXY before the redirect can see it")
+	}
+	p.ForceDNS = false
+	if strings.Contains(Render(p), "dns_force") {
+		t.Fatal("dns_force chain without ForceDNS")
 	}
 }

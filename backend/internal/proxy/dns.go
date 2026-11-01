@@ -41,6 +41,15 @@ func FindProvider(id string) *DNSProvider {
 	return nil
 }
 
+// DomesticDNSFor returns the chosen Iranian DNS (Shecan, Electro, …), or
+// nil when the choice is not a domestic provider.
+func DomesticDNSFor(d config.DNS) []string {
+	if p := FindProvider(d.Provider); p != nil && p.Domestic && len(p.Servers) > 0 {
+		return p.Servers
+	}
+	return nil
+}
+
 // SecureDNSFor picks the resolvers Xray queries through the tunnel.
 // Domestic providers make no sense inside the tunnel, so they fall back to Cloudflare.
 func SecureDNSFor(d config.DNS) []string {
