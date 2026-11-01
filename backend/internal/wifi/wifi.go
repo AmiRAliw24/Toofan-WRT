@@ -146,6 +146,9 @@ func Get() (State, error) {
 			}
 		}
 		b.Uplink = RadioUplink(r)
+		if b.Uplink != "" {
+			b.Channel = "auto" // it follows the modem whatever the config says
+		}
 		st.Bands = append(st.Bands, *b)
 	}
 	sort.Slice(st.Bands, func(i, j int) bool { return st.Bands[i].Band < st.Bands[j].Band })
@@ -261,8 +264,10 @@ func SetBand(in Band) error {
 			return errors.New("invalid channel")
 		}
 	}
-	if up := RadioUplink(cur.Radio); up != "" && ch != "auto" && ch != cur.Channel {
-		return fmt.Errorf("this radio is connected to %q for internet and must follow its channel (auto)", up)
+	// A radio connected to a modem for internet runs on the modem's
+	// channel: keep "auto" there so SSID/password changes still apply.
+	if RadioUplink(cur.Radio) != "" {
+		ch = "auto"
 	}
 	b.Set(r+"channel", ch)
 	if w := fixWidth(cur.Band, ch, firstNonEmpty(in.HTMode, cur.HTMode)); w != "" {

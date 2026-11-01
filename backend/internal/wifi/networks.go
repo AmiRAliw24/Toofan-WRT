@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -421,8 +420,10 @@ func SetRadio(r RadioSettings) error {
 	if _, err := env.Run(3*time.Second, "uci", "-q", "get", "wireless."+r.Radio); err != nil {
 		return errNoRadio
 	}
-	if up := RadioUplink(r.Radio); up != "" && r.Channel != "auto" {
-		return fmt.Errorf("this radio is connected to %q for internet and must follow its channel (auto)", up)
+	// A radio connected to a modem for internet has to run on the modem's
+	// channel: keep it on "auto" and still apply the other settings.
+	if RadioUplink(r.Radio) != "" {
+		r.Channel = "auto"
 	}
 	b := uci.NewBatch().Set("wireless."+r.Radio+".channel", r.Channel)
 	if w := fixWidth(radioBand(r.Radio), r.Channel, r.HTMode); w != "" {

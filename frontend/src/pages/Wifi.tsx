@@ -157,7 +157,12 @@ function RadioCard({ b, onSaved }: { b: Band; onSaved: () => void }) {
             </select>
           </Field>
         </div>
-        {b.uplink && <div class="callout info small"><div>{L(`این رادیو برای اینترنت به «${b.uplink}» وصل است، پس کانالش همیشه همان کانال مودم است و دستی عوض نمی‌شود.`, `This radio is connected to “${b.uplink}” for internet, so it always uses that network’s channel and can’t be set by hand.`)}</div></div>}
+        {b.uplink && <div class="callout info small"><div>
+          <b>{L(`این رادیو برای اینترنت به «${b.uplink}» وصل است`, `This radio is connected to “${b.uplink}” for internet`)}</b>
+          {L(`یک رادیو هم‌زمان فقط روی یک کانال کار می‌کند، پس وای‌فای ${b.band === '5g' ? '۵ گیگ' : '۲٫۴ گیگ'} روتر همیشه روی کانال همان مودم است${b.liveChannel ? ` (الان ${b.liveChannel})` : ''}. برای انتخاب کانال دلخواه: کانال را در تنظیمات خود مودم عوض کنید، یا اتصال اینترنت را به باند دیگر ببرید (اینترنت ← تنظیم اتصال).`,
+            `A radio works on one channel at a time, so the router’s ${b.band === '5g' ? '5 GHz' : '2.4 GHz'} Wi-Fi always uses the modem’s channel${b.liveChannel ? ` (now ${b.liveChannel})` : ''}. To choose a channel: change it on the modem itself, or move the internet connection to the other band (Internet → Connection setup).`)}
+          <div class="tiny">{L('بقیهٔ تنظیمات (پهنا، توان، نام و رمز) عادی ذخیره می‌شوند.', 'Other settings (width, power, name and password) save normally.')}</div>
+        </div></div>}
         {dfs && <div class="callout warn small"><div>{L('کانال‌های 52 تا 144 (DFS) قبل از شروع، یک دقیقه رادار را بررسی می‌کنند؛ در این مدت این باند خاموش است. اگر روتر رادار ببیند، خودش کانال را عوض می‌کند.', 'Channels 52–144 (DFS) listen for radar for a minute before starting; this band is off meanwhile. If radar is detected the router moves to another channel.')}</div></div>}
         <div class="tiny faint">{L('بعد از ذخیره، روتر بررسی می‌کند رادیو واقعاً روی کانال جدید رفته باشد (اگر نرفته باشد یک بار رادیو را کامل ری‌استارت می‌کند)؛ اگر باز هم نشد، تنظیمات قبلی برمی‌گردد و علتش را می‌گوید.', 'After saving, the router checks the radio really moved to the new channel (restarting it fully once if needed); if it still won’t, the previous settings come back and the reason is shown.')}</div>
         <div><Btn sm kind="primary" busy={busy} onClick={async () => {
@@ -229,8 +234,10 @@ function BandForm({ b, onSaved, net, routing, onRoute }: { b: Band; onSaved: () 
               {encOptions().map((o) => <option value={o.id}>{o.label}</option>)}
             </select>
           </Field>
-          <Field label={L('کانال', 'Channel')}>
-            <select class="select" value={f.channel} onChange={(e) => up({ channel: (e.target as HTMLSelectElement).value })}>
+          <Field label={L('کانال', 'Channel')} hint={b.uplink
+            ? <>{L('همان کانال مودم «', 'Follows the modem “')}<bdi>{b.uplink}</bdi>{L('»', '”')}{b.liveChannel ? <>{L(' — الان ', ' — now ')}<b class="mono">{b.liveChannel}</b></> : null}</>
+            : b.liveChannel ? <>{L('کانال واقعی الان: ', 'Running on channel ')}<b class="mono">{b.liveChannel}</b></> : undefined}>
+            <select class="select" value={f.channel} disabled={!!b.uplink} onChange={(e) => up({ channel: (e.target as HTMLSelectElement).value })}>
               <option value="auto">{L('خودکار', 'Automatic')}</option>
               {channelOptions(f.channels)}
             </select>
