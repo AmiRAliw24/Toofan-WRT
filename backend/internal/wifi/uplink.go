@@ -25,6 +25,32 @@ const (
 	uplinkIfname  = "wl-uplink"
 )
 
+// A second Wi-Fi uplink (on the other radio) adds bandwidth when speed
+// aggregation is on. Each radio can hold one uplink: it has to follow its
+// modem's channel.
+type slotInfo struct {
+	Net, Section, Ifname, Metric string
+}
+
+var slots = map[int]slotInfo{
+	1: {UplinkNet, uplinkSection, uplinkIfname, "20"},
+	2: {"wwan2", "separ_uplink2", "wl-uplink2", "30"},
+}
+
+// Slots lists the uplink slot numbers.
+func Slots() []int { return []int{1, 2} }
+
+// SlotNet is the netifd interface of an uplink slot.
+func SlotNet(slot int) string { return slots[slot].Net }
+
+func slotOf(slot int) (slotInfo, error) {
+	si, ok := slots[slot]
+	if !ok {
+		return slotInfo{}, errors.New("invalid uplink slot")
+	}
+	return si, nil
+}
+
 type Network struct {
 	SSID       string `json:"ssid"`
 	BSSID      string `json:"bssid"`
@@ -35,6 +61,7 @@ type Network struct {
 }
 
 type Uplink struct {
+	Slot       int    `json:"slot"`
 	Configured bool   `json:"configured"`
 	SSID       string `json:"ssid"`
 	Band       string `json:"band"`
@@ -46,7 +73,7 @@ type Uplink struct {
 
 var (
 	mockUpMu sync.Mutex
-	mockUp   Uplink
+	mockUp   = map[int]Uplink{}
 )
 
 func encFromScan(e map[string]any) string {
@@ -155,19 +182,28 @@ func ScanNetworks() ([]Network, error) {
 	return out, nil
 }
 
-func UplinkStatus() Uplink {
+func UplinkStatus() Uplink { return UplinkStatusSlot(1) }
+
+func UplinkStatusSlot(slot int) Uplink {
+	u := Uplink{Slot: slot}
+	si, err := slotOf(slot)
+	if err != nil {
+		return u
+	}
 	if env.Mock {
 		mockUpMu.Lock()
 		defer mockUpMu.Unlock()
-		return mockUp
+		if m, ok := mockUp[slot]; ok {
+			return m
+		}
+		return u
 	}
-	u := Uplink{}
 	m, err := uci.Show("wireless")
 	if err != nil {
 		return u
 	}
-	p := "wireless." + uplinkSection + "."
-	if m["wireless."+uplinkSection] != "wifi-iface" || m[p+"disabled"] == "1" {
+	p := "wireless." + si.Section + "."
+	if m["wireless."+si.Section] != "wifi-iface" || m[p+"disabled"] == "1" {
 		return u
 	}
 	u.Configured, u.SSID = true, m[p+"ssid"]
@@ -178,7 +214,7 @@ func UplinkStatus() Uplink {
 			}
 		}
 	}
-	if info, err := env.Ubus("iwinfo", "info", `{"device":"`+uplinkIfname+`"}`); err == nil {
+	if info, err := env.Ubus("iwinfo", "info", `{"device":"`+si.Ifname+`"}`); err == nil {
 		var i struct {
 			SSID   string `json:"ssid"`
 			BSSID  string `json:"bssid"`
@@ -188,7 +224,7 @@ func UplinkStatus() Uplink {
 		u.Connected = i.BSSID != "" && i.BSSID != "00:00:00:00:00:00" && i.Signal != 0
 		u.Signal = i.Signal
 	}
-	if st, err := env.Ubus("network.interface."+UplinkNet, "status", ""); err == nil {
+	if st, err := env.Ubus("network.interface."+si.Net, "status", ""); err == nil {
 		var s struct {
 			Up   bool `json:"up"`
 			IPv4 []struct {
@@ -204,7 +240,15 @@ func UplinkStatus() Uplink {
 }
 
 // ConnectUplink joins the given network as the router's internet source.
-func ConnectUplink(n Network, key string) error {
+func ConnectUplink(n Network, key string) error { return ConnectUplinkSlot(1, n, key) }
+
+// ConnectUplinkSlot joins a network on one uplink slot. The two slots must
+// use different radios (bands).
+func ConnectUplinkSlot(slot int, n Network, key string) error {
+	si, err := slotOf(slot)
+	if err != nil {
+		return err
+	}
 	if n.SSID == "" || len(n.SSID) > 32 {
 		return errors.New("invalid network name")
 	}
@@ -219,9 +263,17 @@ func ConnectUplink(n Network, key string) error {
 	default:
 		return errors.New("unknown security type")
 	}
+	for _, other := range Slots() {
+		if other == slot {
+			continue
+		}
+		if o := UplinkStatusSlot(other); o.Configured && o.Band == n.Band {
+			return fmt.Errorf("the %s radio already holds the other Wi-Fi uplink (%s); pick a network on the other band", bandName(n.Band), o.SSID)
+		}
+	}
 	if env.Mock {
 		mockUpMu.Lock()
-		mockUp = Uplink{Configured: true, SSID: n.SSID, Band: n.Band, Connected: true, Signal: n.Signal, IP: "192.168.70.150"}
+		mockUp[slot] = Uplink{Slot: slot, Configured: true, SSID: n.SSID, Band: n.Band, Connected: true, Signal: n.Signal, IP: fmt.Sprintf("192.168.%d.150", 69+slot)}
 		mockUpMu.Unlock()
 		return nil
 	}
@@ -245,15 +297,15 @@ func ConnectUplink(n Network, key string) error {
 	if !band.Enabled && band.Section != "" && band.Encryption == "none" {
 		b.Set("wireless."+band.Section+".disabled", "1")
 	}
-	b.Set("network."+UplinkNet, "interface")
-	b.Set("network."+UplinkNet+".proto", "dhcp")
-	b.Set("network."+UplinkNet+".metric", "20") // the cable (metric 0) wins when present
-	sec := "wireless." + uplinkSection
+	b.Set("network."+si.Net, "interface")
+	b.Set("network."+si.Net+".proto", "dhcp")
+	b.Set("network."+si.Net+".metric", si.Metric) // the cable (metric 0) wins when present
+	sec := "wireless." + si.Section
 	b.Set(sec, "wifi-iface")
 	b.Set(sec+".device", radio)
 	b.Set(sec+".mode", "sta")
-	b.Set(sec+".network", UplinkNet)
-	b.Set(sec+".ifname", uplinkIfname)
+	b.Set(sec+".network", si.Net)
+	b.Set(sec+".ifname", si.Ifname)
 	b.Set(sec+".ssid", n.SSID)
 	b.Set(sec+".encryption", n.Encryption)
 	b.Set(sec+".disabled", "0")
@@ -266,8 +318,8 @@ func ConnectUplink(n Network, key string) error {
 	// A radio can serve only one channel: let it follow the modem's.
 	b.Set("wireless."+radio+".channel", "auto")
 	b.Set("wireless."+radio+".disabled", "0")
-	if zone := wanZone(); zone != "" && !zoneHas(zone, UplinkNet) {
-		b.AddList(zone+".network", UplinkNet)
+	if zone := wanZone(); zone != "" && !zoneHas(zone, si.Net) {
+		b.AddList(zone+".network", si.Net)
 	}
 	if err := b.Commit(); err != nil {
 		return err
@@ -278,17 +330,23 @@ func ConnectUplink(n Network, key string) error {
 	return err
 }
 
-func DisconnectUplink() error {
+func DisconnectUplink() error { return DisconnectUplinkSlot(1) }
+
+func DisconnectUplinkSlot(slot int) error {
+	si, err := slotOf(slot)
+	if err != nil {
+		return err
+	}
 	if env.Mock {
 		mockUpMu.Lock()
-		mockUp = Uplink{}
+		delete(mockUp, slot)
 		mockUpMu.Unlock()
 		return nil
 	}
-	if err := uci.NewBatch().Delete("wireless." + uplinkSection).Commit(); err != nil {
+	if err := uci.NewBatch().Delete("wireless." + si.Section).Commit(); err != nil {
 		return err
 	}
-	_, err := env.Run(30*time.Second, "wifi", "reload")
+	_, err = env.Run(30*time.Second, "wifi", "reload")
 	return err
 }
 
@@ -314,4 +372,30 @@ func zoneHas(zone, network string) bool {
 		}
 	}
 	return false
+}
+
+func bandName(b string) string {
+	if b == "5g" {
+		return "5 GHz"
+	}
+	return "2.4 GHz"
+}
+
+// RadioUplink returns the SSID of the uplink a radio holds ("" when none).
+// Such a radio has to stay on the modem's channel.
+func RadioUplink(radio string) string {
+	if env.Mock {
+		return ""
+	}
+	m, err := uci.Show("wireless")
+	if err != nil {
+		return ""
+	}
+	for _, si := range slots {
+		p := "wireless." + si.Section + "."
+		if m["wireless."+si.Section] == "wifi-iface" && m[p+"disabled"] != "1" && m[p+"device"] == radio {
+			return m[p+"ssid"]
+		}
+	}
+	return ""
 }

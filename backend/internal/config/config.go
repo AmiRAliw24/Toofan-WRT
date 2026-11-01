@@ -113,6 +113,13 @@ type DNS struct {
 	ClientDNS bool `json:"clientDns"`
 }
 
+// Balance spreads new connections over every healthy internet link.
+type Balance struct {
+	Enabled bool `json:"enabled"`
+	// Weights by netifd interface (wan, wwan, wwan2), 1-10; missing = 1.
+	Weights map[string]int `json:"weights,omitempty"`
+}
+
 // Geo data (chocolate4u/Iran-v2ray-rules) update policy.
 type Geo struct {
 	AutoUpdate bool `json:"autoUpdate"` // weekly
@@ -142,10 +149,12 @@ type Config struct {
 	Schedules []Schedule        `json:"schedules"`
 	DNS       DNS               `json:"dns"`
 	LED       LED               `json:"led"`
-	LockWAN   bool              `json:"lockWan"` // panel/SSH unreachable from WAN
-	SmartWiFi bool              `json:"smartWifi"`
-	SQM       SQM               `json:"sqm"`
-	UpdateURL string            `json:"updateUrl"` // release manifest (JSON)
+	// Speed aggregation across internet links (cable + Wi-Fi uplinks).
+	Balance   Balance `json:"balance"`
+	LockWAN   bool    `json:"lockWan"` // panel/SSH unreachable from WAN
+	SmartWiFi bool    `json:"smartWifi"`
+	SQM       SQM     `json:"sqm"`
+	UpdateURL string  `json:"updateUrl"` // release manifest (JSON)
 	// WiFiRoutes: wifi-iface section -> "direct" for networks that bypass the tunnel.
 	WiFiRoutes map[string]string `json:"wifiRoutes"`
 	Geo        Geo               `json:"geo"`

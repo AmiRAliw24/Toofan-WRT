@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Activity, ArrowDown, ArrowUp, CheckCircle2, CircleSlash, Flag, Gauge as GaugeIcon, Globe, History, LineChart as LineIcon, Play, Settings2, Stethoscope, Timer, Waypoints, XCircle } from 'lucide-preact';
+import { Activity, ArrowDown, ArrowUp, CheckCircle2, CircleSlash, Flag, Gauge as GaugeIcon, Globe, History, LineChart as LineIcon, Play, Settings2, Stethoscope, Timer, Waypoints, Wrench, XCircle } from 'lucide-preact';
 import { get, post, usePoll } from '../api';
 import { UplinkCard, WanCard } from './Network';
+import { BalanceCard } from './Balance';
 import { SpeedTest } from './SpeedTest';
 import { onRefresh, overview } from '../app';
 import { L, ago, clock, lang, num, pct } from '../i18n';
@@ -87,7 +88,8 @@ function Quality() {
   );
 }
 
-interface Step { id: string; status: 'ok' | 'fail' | 'skip'; ms?: number; detail?: string }
+interface Step { id: string; status: 'ok' | 'fail' | 'skip'; ms?: number; detail?: string; fixable?: boolean }
+interface FixResult { id: string; fixed: boolean; action: string; reason?: string; detail?: string; report: DiagReport }
 interface DiagReport { steps: Step[]; rootCause: string; at: number }
 interface Incident { kind: string; start: number; end?: number }
 
@@ -103,7 +105,31 @@ const stepInfo = (id: string) => ({
   'lan-dns': { t: L('DNS روتر برای دستگاه‌ها', 'Router DNS for devices'), h: L('دستگاه‌ها نمی‌توانند آدرس سایت‌ها را پیدا کنند؛ پنل خودش DNS را بازیابی می‌کند. اگر ادامه داشت روتر را ری‌استارت کنید.', 'Devices can’t look up sites; the panel recovers DNS on its own. If it persists, restart the router.') },
   'iran-direct': { t: L('سایت‌های ایرانی مستقیم', 'Iranian sites direct'), h: L('یک سایت ایرانی از مسیر مستقیم باز نشد؛ جزئیات همین خط علت را می‌گوید (آدرس غیرایرانی یعنی DNS از خارج جواب داده).', 'An Iranian site did not open directly; the detail on this line says why (a non-Iranian address means DNS answered from abroad).') },
   firewall: { t: L('فایروال پنل', 'Panel firewall'), h: L('قوانین فایروال اعمال نشده؛ پنل را ری‌استارت کنید.', 'Firewall rules are not loaded; restart the panel.') },
+  packages: { t: L('بسته‌های لازم پنل', 'Packages the panel needs'), h: L('بعضی بسته‌ها (مثل rpcd یا TPROXY) نصب نیستند؛ «رفع» آن‌ها را از سرور OpenWrt نصب می‌کند.', 'Some packages (like rpcd or TPROXY) are missing; “Fix” installs them from OpenWrt’s server.') },
+  web: { t: L('پنل روی پورت ۸۰', 'Panel on port 80'), h: L('برنامهٔ دیگری (مثلاً LuCI) پورت ۸۰ را گرفته؛ «رفع» آن را به پورت ۸۰۸۱ می‌برد.', 'Another program (e.g. LuCI) holds port 80; “Fix” moves it to port 8081.') },
 } as Record<string, { t: string; h: string }>)[id] || { t: id, h: '' };
+
+const fixAction = (a: string) => ({
+  'restart-wan': L('اتصال اینترنت روتر دوباره برقرار شد', 'The router’s internet connection was restarted'),
+  'refresh-servers': L('اشتراک‌ها به‌روز و سرورها دوباره آزمایش شدند', 'Subscriptions updated and servers re-tested'),
+  'switch-server': L('سرورها دوباره آزمایش و بهترین انتخاب شد', 'Servers re-tested and the best one picked'),
+  'restart-engine': L('موتور اینترنت آزاد دوباره راه‌اندازی شد', 'The free-internet engine was restarted'),
+  'restart-dns': L('DNS روتر دوباره راه‌اندازی شد', 'The router’s DNS was restarted'),
+  'reload-iran': L('فهرست ایران و DNS دوباره بارگذاری شد', 'Iran lists and DNS reloaded'),
+  'reload-firewall': L('فایروال دوباره اعمال شد', 'The firewall was re-applied'),
+  'install-packages': L('بسته‌های جاافتاده نصب شد', 'Missing packages installed'),
+  'free-port': L('پورت ۸۰ برای پنل آزاد شد', 'Port 80 freed for the panel'),
+} as Record<string, string>)[a] || a;
+
+const fixReason = (r?: string) => ({
+  cable: L('روتر به مودم وصل نمی‌شود: کابل WAN و روشن بودن مودم را بررسی کنید.', 'The router can’t reach the modem: check the WAN cable and that the modem is on.'),
+  modem: L('مشکل از مودم یا خط اینترنت است: مودم را خاموش و روشن کنید یا با اپراتور تماس بگیرید.', 'The modem or the line is at fault: power-cycle the modem or call your ISP.'),
+  servers: L('هیچ سروری جواب نداد: سرور یا اشتراک جدید اضافه کنید.', 'No server answered: add a new server or subscription.'),
+  'dns-provider': L('DNS انتخابی از داخل تونل جواب نمی‌دهد: در صفحهٔ DNS یکی دیگر انتخاب کنید.', 'The chosen DNS doesn’t answer through the tunnel: pick another on the DNS page.'),
+  'package-server': L('روتر به سرور بسته‌های OpenWrt دسترسی ندارد؛ بعداً خودش دوباره تلاش می‌کند.', 'The router can’t reach OpenWrt’s package server; it retries later by itself.'),
+  'other-program': L('برنامهٔ دیگری پورت ۸۰ را گرفته که پنل نمی‌تواند جابه‌جایش کند.', 'Another program holds port 80 and the panel can’t move it.'),
+  'not-fixable': L('این مورد دست روتر نیست.', 'This is outside the router’s control.'),
+} as Record<string, string>)[r || ''] || L('نتوانستم رفعش کنم.', 'I couldn’t fix it.');
 
 const incidentLabel = (k: string) => ({
   line: L('قطعی کامل خط', 'Line outage'),
@@ -120,7 +146,22 @@ function dur(sec: number) {
 function Diagnostics() {
   const [rep, setRep] = useState<DiagReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fixing, setFixing] = useState('');
+  const [fixed, setFixed] = useState<Record<string, FixResult>>({});
   const inc = usePoll<Incident[]>('/incidents', 0);
+  const fix = async (id: string) => {
+    setFixing(id);
+    const r = await run(() => post<FixResult>('/diag/fix', { id }));
+    setFixing('');
+    if (!r) return;
+    setRep(r.report);
+    setFixed((m) => ({ ...m, [id]: r }));
+  };
+  const fixBtn = (s: Step) => s.fixable && (
+    <Btn sm kind={fixing === s.id ? undefined : 'primary'} busy={fixing === s.id} disabled={!!fixing && fixing !== s.id} onClick={() => fix(s.id)}>
+      <Wrench size={14} />{fixing === s.id ? L('در حال رفع…', 'Fixing…') : L('رفع', 'Fix')}
+    </Btn>
+  );
   const runDiag = async () => {
     setBusy(true);
     const r = await run(() => get<DiagReport>('/diag'));
@@ -142,6 +183,7 @@ function Diagnostics() {
                 <b>{L('ریشهٔ مشکل: ', 'Root cause: ')}{stepInfo(root.id).t}</b>
                 {stepInfo(root.id).h}
                 {root.detail && <div class="tiny mono" style="margin-top:4px">{root.detail}</div>}
+                {root.fixable && <div style="margin-top:8px">{fixBtn(root)}</div>}
               </div></div>
             ) : (
               <div class="callout ok"><CheckCircle2 size={20} /><div><b>{L('همه چیز سالم است', 'Everything is healthy')}</b>{L('همهٔ حلقه‌های اتصال جواب دادند.', 'Every link in the chain answered.')}</div></div>
@@ -156,7 +198,11 @@ function Diagnostics() {
             <div class="grow" style="min-width:0">
               <div style="font-weight:700">{stepInfo(s.id).t}</div>
               {s.detail && <div class="tiny faint truncate ltr" style="text-align:start">{s.detail}</div>}
+              {fixed[s.id] && (fixed[s.id].fixed
+                ? <div class="tiny" style="color:var(--ok);margin-top:3px">✓ {L('رفع شد: ', 'Fixed: ')}{fixAction(fixed[s.id].action)}</div>
+                : <div class="tiny" style="color:var(--danger-strong);margin-top:3px">✗ {L('نتوانستم رفعش کنم. ', 'I couldn’t fix it. ')}{fixReason(fixed[s.id].reason)}</div>)}
             </div>
+            {s.status === 'fail' && fixBtn(s)}
             {s.status === 'skip' ? <span class="tiny faint">{L('رد شد', 'skipped')}</span> : s.ms ? <span class="small mono faint">{s.ms} ms</span> : null}
           </div>
         ))}
@@ -192,7 +238,7 @@ export function Internet() {
         { id: 'diag', label: L('عیب‌یابی', 'Diagnose'), icon: <Stethoscope size={17} /> },
         { id: 'setup', label: L('تنظیم اتصال', 'Connection setup'), icon: <Settings2 size={17} /> },
       ]} />
-      {tab === 'quality' ? <Quality /> : tab === 'speed' ? <SpeedTest /> : tab === 'diag' ? <Diagnostics /> : <div class="stack"><WanCard /><UplinkCard /></div>}
+      {tab === 'quality' ? <Quality /> : tab === 'speed' ? <SpeedTest /> : tab === 'diag' ? <Diagnostics /> : <div class="stack"><BalanceCard /><WanCard /><UplinkCard /></div>}
     </div>
   );
 }

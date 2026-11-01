@@ -31,6 +31,7 @@ func (s *Server) phase2Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/wifi/smart", s.wifiSmart)
 
 	api.HandleFunc("GET /api/diag", s.diag)
+	api.HandleFunc("POST /api/diag/fix", s.diagFix)
 	api.HandleFunc("GET /api/incidents", s.incidents)
 	api.HandleFunc("POST /api/security", s.security)
 }
@@ -192,6 +193,21 @@ func (s *Server) wifiSmart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) diag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.core.Diagnose())
+}
+
+func (s *Server) diagFix(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ID string `json:"id"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	res, err := s.core.Fix(in.ID)
+	if err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, res)
 }
 
 func (s *Server) incidents(w http.ResponseWriter, r *http.Request) {

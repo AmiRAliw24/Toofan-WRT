@@ -21,6 +21,8 @@ type Step struct {
 	Status string `json:"status"` // ok | fail | skip
 	Ms     int    `json:"ms,omitempty"`
 	Detail string `json:"detail,omitempty"`
+	// Fixable: the panel can try to repair this failure (see Fix).
+	Fixable bool `json:"fixable,omitempty"`
 }
 
 type DiagReport struct {
@@ -61,7 +63,18 @@ func (c *Core) Diagnose() DiagReport {
 			{ID: "lan-dns", Status: "ok", Ms: 12, Detail: "142.250.185.68"},
 			{ID: "iran-direct", Status: "ok", Ms: 64, Detail: "185.143.233.120"},
 			{ID: "firewall", Status: "ok"},
+			{ID: "packages", Status: "ok"},
+			{ID: "web", Status: "ok"},
 		}
+		// Demo: one repairable fault until "fixed", and a filtered direct route.
+		mockMu.Lock()
+		broken := !mockRepaired
+		mockMu.Unlock()
+		if broken {
+			rep.Steps[7] = Step{ID: "tunnel-dns", Status: "fail", Ms: 4000, Detail: "i/o timeout", Fixable: true}
+			rep.RootCause = "tunnel-dns"
+		}
+		rep.Steps[4] = Step{ID: "foreign", Status: "fail", Ms: 5000, Detail: "international link unreachable directly"}
 		return rep
 	}
 	add := func(s Step) { rep.Steps = append(rep.Steps, s) }
@@ -74,7 +87,7 @@ func (c *Core) Diagnose() DiagReport {
 		}
 		ms, d, err := timed(f)
 		if err != nil {
-			add(Step{ID: id, Status: "fail", Ms: ms, Detail: err.Error()})
+			add(Step{ID: id, Status: "fail", Ms: ms, Detail: err.Error(), Fixable: Fixable(id)})
 			if !failed {
 				rep.RootCause, failed = id, true
 			}
@@ -178,6 +191,8 @@ func (c *Core) Diagnose() DiagReport {
 		}
 		return "", nil
 	})
+	step("packages", false, packagesStep)
+	step("web", false, c.webStep)
 	if foreignFailed && rep.RootCause == "" && off {
 		rep.RootCause = "foreign"
 	}
@@ -196,6 +211,11 @@ func inCIDRs(ip string, cidrs []string) bool {
 	}
 	return false
 }
+
+var (
+	mockMu       sync.Mutex
+	mockRepaired bool
+)
 
 type errString string
 

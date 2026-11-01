@@ -4,6 +4,7 @@ package wifi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -322,6 +323,9 @@ func SetChannel(band string, channel int) error {
 	}
 	for _, b := range st.Bands {
 		if b.Band == band {
+			if up := RadioUplink(b.Radio); up != "" {
+				return fmt.Errorf("this radio is connected to %q for internet and follows its channel", up)
+			}
 			ch := strconv.Itoa(channel)
 			batch := uci.NewBatch().Set("wireless."+b.Radio+".channel", ch)
 			if w := fixWidth(b.Band, ch, b.HTMode); w != "" && w != b.HTMode {

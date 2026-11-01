@@ -169,7 +169,7 @@ type ifaceStatus struct {
 func WANStatus() (ifaceStatus, error) {
 	var first ifaceStatus
 	var firstErr error
-	for i, name := range []string{"wan", "wwan"} {
+	for i, name := range []string{"wan", "wwan", "wwan2"} {
 		var st ifaceStatus
 		out, err := env.Ubus("network.interface."+name, "status", "")
 		if err == nil {

@@ -349,3 +349,17 @@ func TestBoardFromFiles(t *testing.T) {
 		t.Fatal("no board name must be an error, never a guess")
 	}
 }
+
+func TestMissingRequired(t *testing.T) {
+	defer func(f func() (map[string]bool, error)) { installedFn = f }(installedFn)
+	have := map[string]bool{}
+	for _, p := range Required {
+		have[p] = true
+	}
+	delete(have, "rpcd")
+	installedFn = func() (map[string]bool, error) { return have, nil }
+	miss, err := MissingRequired()
+	if err != nil || len(miss) != 1 || miss[0] != "rpcd" {
+		t.Fatalf("got %v %v", miss, err)
+	}
+}

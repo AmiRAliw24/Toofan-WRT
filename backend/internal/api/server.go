@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -928,4 +929,11 @@ func (s *Server) dnsSet(w http.ResponseWriter, r *http.Request) {
 		c.DNS = in
 		return nil
 	}))
+}
+
+// decodeOptional reads a JSON body when there is one (old clients send none).
+func decodeOptional(r *http.Request, v any) {
+	if r.ContentLength != 0 {
+		json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(v)
+	}
 }

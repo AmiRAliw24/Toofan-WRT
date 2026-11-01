@@ -73,6 +73,39 @@ func setHeal(f func(h *Heal)) {
 	healMu.Unlock()
 }
 
+// installedFn lists installed package names (opkg or apk).
+var installedFn = func() (map[string]bool, error) {
+	out, err := env.Run(30*time.Second, "/bin/sh", "-c",
+		"if command -v apk >/dev/null 2>&1; then apk info; else opkg list-installed | cut -d' ' -f1; fi")
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]bool{}
+	for _, l := range strings.Fields(out) {
+		m[l] = true
+	}
+	return m, nil
+}
+
+// MissingRequired lists required packages that are not installed (rpcd
+// removed with LuCI, a firmware without the panel's packages, …).
+func MissingRequired() ([]string, error) {
+	if env.Mock {
+		return nil, nil
+	}
+	have, err := installedFn()
+	if err != nil {
+		return nil, err
+	}
+	var miss []string
+	for _, p := range Required {
+		if !have[p] {
+			miss = append(miss, p)
+		}
+	}
+	return miss, nil
+}
+
 // MissingPath is written by install.sh when packages could not be installed.
 var MissingPath = "/etc/toofanwrt/pkgs-missing"
 
@@ -84,11 +117,18 @@ func AfterBoot() {
 	}
 	m, err := ReadMarker()
 	_, missing := os.Stat(MissingPath)
-	if (err != nil || m.Healed) && missing != nil {
-		return
-	}
+	pending := (err == nil && !m.Healed) || missing == nil
 	go func() {
 		time.Sleep(healDelay) // let the WAN come up
+		if !pending {
+			// Every start: a required package may have gone (rpcd taken
+			// away with LuCI, a manual opkg remove …).
+			miss, err := MissingRequired()
+			if err != nil || len(miss) == 0 {
+				return
+			}
+			env.Logf("required packages missing: %s; installing", strings.Join(miss, " "))
+		}
 		for i := 1; i <= healTries; i++ {
 			if Repair() == nil {
 				return

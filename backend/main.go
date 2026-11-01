@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -19,6 +20,7 @@ import (
 	"toofanwrt/internal/config"
 	"toofanwrt/internal/core"
 	"toofanwrt/internal/env"
+	"toofanwrt/internal/luci"
 )
 
 //go:embed all:web/dist
@@ -92,6 +94,14 @@ func main() {
 			for {
 				err := http.ListenAndServe(strings.TrimSpace(a), h)
 				log.Printf("listen %s: %v (retrying)", a, err)
+				if errors.Is(err, syscall.EADDRINUSE) {
+					_, port, _ := net.SplitHostPort(strings.TrimSpace(a))
+					if p, _ := strconv.Atoi(port); p > 0 {
+						if ferr := luci.FreePort(p); ferr != nil {
+							log.Printf("port %d: %v", p, ferr)
+						}
+					}
+				}
 				time.Sleep(5 * time.Second)
 			}
 		}(a)

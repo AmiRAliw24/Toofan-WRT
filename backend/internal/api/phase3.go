@@ -46,6 +46,8 @@ func (s *Server) phase3Routes(api *http.ServeMux) {
 	api.HandleFunc("POST /api/network/uplink/scan", s.uplinkScan)
 	api.HandleFunc("POST /api/network/uplink", s.uplinkConnect)
 	api.HandleFunc("POST /api/network/uplink/disconnect", s.uplinkDisconnect)
+	api.HandleFunc("GET /api/balance", s.balanceGet)
+	api.HandleFunc("POST /api/balance", s.balanceSet)
 	api.HandleFunc("GET /api/wifi/networks", s.wifiNetworks)
 	api.HandleFunc("POST /api/wifi/networks", s.wifiNetworkSave)
 	api.HandleFunc("DELETE /api/wifi/networks/{section}", s.wifiNetworkDelete)
@@ -267,8 +269,15 @@ func (s *Server) netSystem(w http.ResponseWriter, r *http.Request) {
 	respond(w, netcfg.SetSystem(in))
 }
 
+func slotParam(v string) int {
+	if v == "2" {
+		return 2
+	}
+	return 1
+}
+
 func (s *Server) uplinkGet(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, wifi.UplinkStatus())
+	writeJSON(w, wifi.UplinkStatusSlot(slotParam(r.URL.Query().Get("slot"))))
 }
 
 func (s *Server) uplinkScan(w http.ResponseWriter, r *http.Request) {
@@ -283,12 +292,16 @@ func (s *Server) uplinkScan(w http.ResponseWriter, r *http.Request) {
 func (s *Server) uplinkConnect(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		wifi.Network
-		Key string `json:"key"`
+		Key  string `json:"key"`
+		Slot int    `json:"slot"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if err := wifi.ConnectUplink(in.Network, in.Key); err != nil {
+	if in.Slot == 0 {
+		in.Slot = 1
+	}
+	if err := wifi.ConnectUplinkSlot(in.Slot, in.Network, in.Key); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -297,7 +310,41 @@ func (s *Server) uplinkConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uplinkDisconnect(w http.ResponseWriter, r *http.Request) {
-	respond(w, wifi.DisconnectUplink())
+	var in struct {
+		Slot int `json:"slot"`
+	}
+	decodeOptional(r, &in)
+	if in.Slot == 0 {
+		in.Slot = 1
+	}
+	respond(w, wifi.DisconnectUplinkSlot(in.Slot))
+}
+
+// ---- speed aggregation ----
+
+func (s *Server) balanceGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]any{
+		"status":   s.core.Balance.Status(),
+		"settings": s.core.Store.Get().Balance,
+		"uplinks":  []wifi.Uplink{wifi.UplinkStatusSlot(1), wifi.UplinkStatusSlot(2)},
+	})
+}
+
+func (s *Server) balanceSet(w http.ResponseWriter, r *http.Request) {
+	var in config.Balance
+	if !decode(w, r, &in) {
+		return
+	}
+	for k, v := range in.Weights {
+		if (k != "wan" && k != "wwan" && k != "wwan2") || v < 1 || v > 10 {
+			writeErr(w, http.StatusBadRequest, "weights are 1-10 per link")
+			return
+		}
+	}
+	respond(w, s.core.Store.Update(func(c *config.Config) error {
+		c.Balance = in
+		return nil
+	}))
 }
 
 type netView struct {

@@ -135,7 +135,7 @@ export function SystemSettingsCard() {
 }
 
 interface WifiNet { ssid: string; bssid: string; band: '2g' | '5g'; channel: number; signal: number; encryption: string }
-interface Uplink { configured: boolean; ssid: string; band: string; connected: boolean; signal: number; ip: string }
+export interface Uplink { slot: number; configured: boolean; ssid: string; band: string; connected: boolean; signal: number; ip: string }
 
 function Bars({ dbm }: { dbm: number }) {
   const n = dbm >= -55 ? 4 : dbm >= -65 ? 3 : dbm >= -75 ? 2 : 1;
@@ -148,14 +148,15 @@ function Bars({ dbm }: { dbm: number }) {
   );
 }
 
-/** UplinkCard lets the router take its internet from another Wi-Fi network. */
-export function UplinkCard() {
+/** UplinkCard lets the router take its internet from another Wi-Fi network.
+ * Slot 2 is the second Wi-Fi link (on the other radio) for speed aggregation. */
+export function UplinkCard({ slot = 1, otherBand = '', onChange }: { slot?: 1 | 2; otherBand?: string; onChange?: () => void }) {
   const [st, setSt] = useState<Uplink | null>(null);
   const [nets, setNets] = useState<WifiNet[] | null>(null);
   const [busy, setBusy] = useState<'' | 'scan' | 'connect' | 'off'>('');
   const [pick, setPick] = useState<WifiNet | null>(null);
   const [key, setKey] = useState('');
-  const load = () => get<Uplink>('/network/uplink').then(setSt).catch(() => {});
+  const load = () => get<Uplink>(`/network/uplink?slot=${slot}`).then((u) => { setSt(u); }).catch(() => {});
   useEffect(() => {
     load();
     const t = setInterval(load, 5000);
@@ -164,26 +165,29 @@ export function UplinkCard() {
   const scan = async () => {
     setBusy('scan');
     const r = await run(() => post<WifiNet[]>('/network/uplink/scan'));
-    if (r) setNets(r);
+    // Each radio holds one uplink: the second one needs the other band.
+    if (r) setNets(otherBand ? r.filter((n) => n.band !== otherBand) : r);
     setBusy('');
   };
   const connect = async () => {
     if (!pick) return;
     setBusy('connect');
-    const ok = await run(() => post('/network/uplink', { ...pick, key }), L('در حال اتصال؛ چند ثانیه صبر کنید…', 'Connecting; give it a few seconds…'));
+    const ok = await run(() => post('/network/uplink', { ...pick, key, slot }), L('در حال اتصال؛ چند ثانیه صبر کنید…', 'Connecting; give it a few seconds…'));
     setBusy('');
     if (ok) {
       setPick(null);
       setKey('');
       setNets(null);
-      setTimeout(load, 8000);
+      setTimeout(() => { load(); onChange?.(); }, 8000);
     }
   };
   const bandLabel = (b: string) => (b === '5g' ? L('۵ گیگ', '5 GHz') : L('۲٫۴ گیگ', '2.4 GHz'));
   return (
     <Card>
-      <CardHead icon={<Wifi size={20} />} title={L('اینترنت از طریق وای‌فای', 'Internet over Wi-Fi')}
-        sub={L('به‌جای کابل، روتر با وای‌فای به مودم وصل شود (حالت تکرارکننده). اگر کابل WAN هم وصل باشد، کابل اولویت دارد.', 'Instead of a cable, the router joins the modem’s Wi-Fi (repeater mode). If the WAN cable is also connected, the cable wins.')} />
+      <CardHead icon={<Wifi size={20} />} title={slot === 2 ? L('وای‌فای دوم (برای تجمیع سرعت)', 'Second Wi-Fi (for speed aggregation)') : L('اینترنت از طریق وای‌فای', 'Internet over Wi-Fi')}
+        sub={slot === 2
+          ? L('یک اینترنت دیگر روی باند دیگر روتر؛ هر رادیو فقط به یک مودم وصل می‌شود.', 'Another internet on the router’s other band; each radio joins one modem only.')
+          : L('به‌جای کابل، روتر با وای‌فای به مودم وصل شود (حالت تکرارکننده). اگر کابل WAN هم وصل باشد، کابل اولویت دارد مگر تجمیع سرعت روشن باشد.', 'Instead of a cable, the router joins the modem’s Wi-Fi (repeater mode). If the WAN cable is also connected, the cable wins unless speed aggregation is on.')} />
       <div class="card-body stack" style="gap:12px">
         {st?.configured ? (
           <div class={'callout small ' + (st.connected ? 'ok' : 'warn')}>
@@ -199,9 +203,10 @@ export function UplinkCard() {
             <Btn sm kind="danger" busy={busy === 'off'} onClick={async () => {
               if (!(await confirmDialog(L('اتصال وای‌فای به مودم قطع شود؟ اگر کابل WAN وصل نباشد، اینترنت روتر قطع می‌شود.', 'Disconnect from the modem’s Wi-Fi? Without a WAN cable the router loses internet.'), true))) return;
               setBusy('off');
-              await run(() => post('/network/uplink/disconnect'), L('قطع شد', 'Disconnected'));
+              await run(() => post('/network/uplink/disconnect', { slot }), L('قطع شد', 'Disconnected'));
               setBusy('');
               load();
+              onChange?.();
             }}>{L('قطع', 'Disconnect')}</Btn>
           </div>
         ) : (

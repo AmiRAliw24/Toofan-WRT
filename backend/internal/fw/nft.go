@@ -31,6 +31,18 @@ type DeviceRule struct {
 	UpKbps   int
 }
 
+// BalanceLink is one internet link in the aggregation. Its Mark (bits
+// 16-23) selects the link's own routing table through an ip rule.
+type BalanceLink struct {
+	Dev     string
+	Mark    uint32
+	Weight  int
+	Healthy bool
+}
+
+// BalanceMask holds the link bits of the packet and connection marks.
+const BalanceMask = 0xff0000
+
 type ScheduleRule struct {
 	MACs []string
 	Days []int
@@ -54,7 +66,11 @@ type Plan struct {
 	DirectNetdevs []string // Wi-Fi networks whose clients bypass the tunnel
 	LockWAN       bool     // drop panel/SSH/LuCI connections arriving from the WAN
 	WANDev        string
+	WANDevs       []string // every internet link (aggregation), for the WAN lock
 	PanelPorts    []int
+	// Balance spreads connections over several internet links (speed
+	// aggregation). Empty = off: everything follows the main routing table.
+	Balance []BalanceLink
 	// ForceDNS answers every client DNS query (port 53, any server) from the
 	// router, so the DNS chosen in the panel applies to devices that have
 	// their own DNS set (8.8.8.8 on a phone, a PC's adapter settings …).
@@ -131,13 +147,17 @@ func Render(p Plan) string {
 		b.WriteString("\t}\n")
 	}
 
-	if p.LockWAN && p.WANDev != "" {
+	wanDevs := dedupe(append(append([]string{}, p.WANDevs...), p.WANDev))
+	if len(wanDevs) > 0 && wanDevs[len(wanDevs)-1] == "" {
+		wanDevs = wanDevs[:len(wanDevs)-1]
+	}
+	if p.LockWAN && len(wanDevs) > 0 {
 		ports := []string{"22", "80", "443"}
 		for _, pt := range p.PanelPorts {
 			ports = append(ports, fmt.Sprint(pt))
 		}
 		b.WriteString("\tchain wan_lock {\n\t\ttype filter hook input priority filter - 5; policy accept;\n")
-		fmt.Fprintf(&b, "\t\tiifname %q tcp dport { %s } drop\n", p.WANDev, strings.Join(dedupe(ports), ", "))
+		fmt.Fprintf(&b, "\t\tiifname { %s } tcp dport { %s } drop\n", quoteList(wanDevs), strings.Join(dedupe(ports), ", "))
 		b.WriteString("\t}\n")
 	}
 
@@ -179,6 +199,8 @@ func Render(p Plan) string {
 		b.WriteString("\t\tmeta l4proto { tcp, udp } th dport 53 counter redirect to :53\n")
 		b.WriteString("\t}\n")
 	}
+
+	b.WriteString(renderBalance(p, all))
 
 	// Per-device byte counters: upload on ingress, download on egress.
 	b.WriteString("\tchain acct_up {\n\t\ttype filter hook prerouting priority mangle - 20; policy accept;\n")
@@ -363,4 +385,84 @@ func Counters() (up, down map[string]uint64, err error) {
 		}
 	}
 	return
+}
+
+// pickMap spreads 0..total-1 over the healthy links by weight, as an nft
+// anonymous map ("{ 0-1 : 0x10000, 2 : 0x20000 }") and its modulus.
+func pickMap(links []BalanceLink) (string, int) {
+	var parts []string
+	total := 0
+	for _, l := range links {
+		if !l.Healthy {
+			continue
+		}
+		w := l.Weight
+		if w < 1 {
+			w = 1
+		}
+		if w == 1 {
+			parts = append(parts, fmt.Sprintf("%d : 0x%x", total, l.Mark))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d-%d : 0x%x", total, total+w-1, l.Mark))
+		}
+		total += w
+	}
+	return "{ " + strings.Join(parts, ", ") + " }", total
+}
+
+// renderBalance: new connections pick a link once (kept in the conntrack
+// mark), and every packet of the connection carries that link's mark, so
+// the policy rules route it out of that link and its replies match.
+//   - LAN traffic that is not proxied: chosen by device + destination, so a
+//     site (a bank's session) always sees the same address.
+//   - The router's own connections (Xray's tunnel connections): chosen per
+//     connection in weighted turns (round robin), which is what adds the links' speeds up; Iranian
+//     destinations stay sticky like above.
+//   - Connections coming in on a link stay on it.
+//
+// DNS and ICMP of the router itself are left to the main table.
+func renderBalance(p Plan, all []string) string {
+	if len(p.Balance) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	pick, total := pickMap(p.Balance)
+	b.WriteString("\tchain lb_mark {\n")
+	for _, l := range p.Balance {
+		fmt.Fprintf(&b, "\t\tct mark and 0x%x == 0x%x meta mark set meta mark or 0x%x return\n", BalanceMask, l.Mark, l.Mark)
+	}
+	b.WriteString("\t}\n")
+
+	b.WriteString("\tchain lb_pre {\n\t\ttype filter hook prerouting priority mangle + 1; policy accept;\n")
+	b.WriteString("\t\tmeta nfproto != ipv4 return\n")
+	for _, l := range p.Balance {
+		fmt.Fprintf(&b, "\t\tiifname %q ct state new ct mark set 0x%x return\n", l.Dev, l.Mark)
+	}
+	if len(all) > 0 {
+		fmt.Fprintf(&b, "\t\tiifname != { %s } return\n", quoteList(all))
+		fmt.Fprintf(&b, "\t\tmeta mark 0x%x return\n", ProxyMark)
+		fmt.Fprintf(&b, "\t\tmeta mark and 0x%x == 0x%x return\n", IranBlockMark, IranBlockMark)
+		b.WriteString("\t\tip daddr @private4 return\n")
+		b.WriteString("\t\tfib daddr type local return\n")
+		if total > 0 {
+			fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ct mark set jhash ip saddr . ip daddr mod %d seed 0x70f4 map %s\n", BalanceMask, total, pick)
+		}
+		b.WriteString("\t\tjump lb_mark\n")
+	}
+	b.WriteString("\t}\n")
+
+	b.WriteString("\tchain lb_out {\n\t\ttype route hook output priority mangle + 1; policy accept;\n")
+	b.WriteString("\t\tmeta nfproto != ipv4 return\n")
+	b.WriteString("\t\tip daddr @private4 return\n")
+	b.WriteString("\t\tfib daddr type local return\n")
+	fmt.Fprintf(&b, "\t\tmeta mark and 0x%x != 0 return\n", BalanceMask)
+	b.WriteString("\t\tmeta l4proto { icmp, igmp } return\n")
+	b.WriteString("\t\tmeta l4proto { tcp, udp } th dport 53 return\n")
+	if total > 0 {
+		fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ip daddr @iran4 ct mark set jhash ip daddr mod %d seed 0x70f4 map %s\n", BalanceMask, total, pick)
+		fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ct mark set numgen inc mod %d map %s\n", BalanceMask, total, pick)
+	}
+	b.WriteString("\t\tjump lb_mark\n")
+	b.WriteString("\t}\n")
+	return b.String()
 }

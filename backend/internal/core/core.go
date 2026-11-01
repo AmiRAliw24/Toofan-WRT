@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 	"toofanwrt/internal/firmware"
+	"toofanwrt/internal/multiwan"
 
 	"toofanwrt/internal/config"
 	"toofanwrt/internal/devices"
@@ -40,6 +41,7 @@ type Core struct {
 	LED       *led.Controller
 	Incidents *Incidents
 	Sites     *sitelog.Log
+	Balance   *multiwan.Manager
 	// PanelPorts are the ports the UI listens on (for the WAN lock).
 	PanelPorts []int
 
@@ -73,6 +75,10 @@ func New(store *config.Store, xrayBin, xrayCompatBin string) *Core {
 		KernelIran:    func() bool { return len(c.iran()) > 0 },
 	}
 	c.Proxy.Init()
+	c.Balance = multiwan.New()
+	c.Balance.OnChange = c.RequestApply
+	bc := store.Get().Balance
+	c.Balance.Configure(bc.Enabled, bc.Weights)
 	c.Quality = NewQuality(c)
 	c.Incidents = NewIncidents("/etc/toofanwrt/incidents.json")
 	c.LED = led.New()
@@ -83,6 +89,8 @@ func New(store *config.Store, xrayBin, xrayCompatBin string) *Core {
 	lastFP := proxyFingerprint(store.Get())
 	var fpMu sync.Mutex
 	store.OnChange(func() {
+		bc := store.Get().Balance
+		c.Balance.Configure(bc.Enabled, bc.Weights)
 		c.RequestApply()
 		fpMu.Lock()
 		defer fpMu.Unlock()
@@ -110,6 +118,7 @@ func (c *Core) Start() {
 	go c.infoLoop()
 	go c.speedLoop()
 	go c.geoLoop()
+	go c.Balance.Run()
 	firmware.RemoveLuci = luci.Remove
 	firmware.OnHealed = func() {
 		c.RequestApply()
@@ -281,6 +290,7 @@ func (c *Core) Shutdown() {
 		return
 	}
 	gaming.RemoveSQM(c.Sampler.WAN().Device)
+	c.Balance.Stop()
 	fw.Remove()
 	dnsctl.Remove()
 }
@@ -359,6 +369,11 @@ func (c *Core) guardLoop() {
 			last = k
 			c.RequestApply()
 		}
+		// ToofanWrt stays the router's web interface: LuCI installed
+		// later is moved to its side port.
+		if _, err := luci.Guard(); err != nil {
+			env.Logf("web guard: %v", err)
+		}
 	}
 }
 
@@ -424,6 +439,10 @@ func (c *Core) apply() {
 		WANDev:     c.Sampler.WAN().Device,
 		PanelPorts: append(append([]int{}, c.PanelPorts...), luci.AltPort),
 		ForceDNS:   !cfg.DNS.ClientDNS,
+		Balance:    c.Balance.Plan(),
+	}
+	for _, l := range plan.Balance {
+		plan.WANDevs = append(plan.WANDevs, l.Dev)
 	}
 	switch {
 	case cfg.Proxy.IranMode == config.IranDirect:
