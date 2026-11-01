@@ -45,6 +45,9 @@ export function Login() {
               {L('کادر رمز را خالی بگذارید و وارد شوید؛ بعد از صفحهٔ سیستم یک رمز بگذارید.', 'Leave the password empty to log in, then set one on the System page.')}
             </div></div>
           )}
+          {!noPw && (
+            <div class="tiny faint">{L('رمز را نمی‌دانید؟ با SSH وارد روتر شوید و دستور passwd را بزنید تا رمز تازه بگذارید.', 'Forgot it? SSH into the router and run passwd to set a new one.')}</div>
+          )}
           <button type="submit" class="btn primary" disabled={busy || (!pw && !noPw)}>
             {busy ? <span class="spinner" /> : L('ورود', 'Log in')}
           </button>

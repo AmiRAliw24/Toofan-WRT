@@ -76,11 +76,44 @@ func (s *sessions) fail(ip string) {
 	s.mu.Unlock()
 }
 
-// checkPassword verifies the root password through rpcd, the same
-// credentials LuCI and SSH use.
+var shadowFile = "/etc/shadow"
+
+// rootHash returns root's password field from /etc/shadow.
+func rootHash() (string, bool) {
+	b, err := os.ReadFile(shadowFile)
+	if err != nil {
+		return "", false
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) > 1 && f[0] == "root" {
+			return f[1], true
+		}
+	}
+	return "", false
+}
+
+// shadowCheck verifies pw against /etc/shadow itself; ok is false when the
+// file or its hash format can't be used.
+func shadowCheck(pw string) (match, ok bool) {
+	h, found := rootHash()
+	if !found {
+		return false, false
+	}
+	if h == "" {
+		return pw == "", true
+	}
+	return verifyCrypt(pw, h)
+}
+
+// checkPassword verifies the root password (the same one SSH uses): from
+// /etc/shadow directly, or through rpcd for hash formats it doesn't know.
 func checkPassword(pw string) bool {
 	if env.Mock {
 		return pw == "admin"
+	}
+	if match, ok := shadowCheck(pw); ok {
+		return match
 	}
 	args, _ := json.Marshal(map[string]any{"username": "root", "password": pw, "timeout": 60})
 	out, err := env.Ubus("session", "login", string(args))
@@ -103,17 +136,8 @@ func rootHasNoPassword() bool {
 	if env.Mock {
 		return false
 	}
-	b, err := os.ReadFile("/etc/shadow")
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(b), "\n") {
-		f := strings.Split(line, ":")
-		if len(f) > 1 && f[0] == "root" {
-			return f[1] == ""
-		}
-	}
-	return false
+	h, ok := rootHash()
+	return ok && h == ""
 }
 
 func clientIP(r *http.Request) string {
