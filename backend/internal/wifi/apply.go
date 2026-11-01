@@ -21,6 +21,18 @@ var (
 	reloadFn     = reloadWifi
 	commitFn     = func(b *uci.Batch) error { return b.Commit() }
 	settle       = 3 * time.Second
+	// liveChannelFn: the channel the radio's access point really uses.
+	liveChannelFn = func(radio string) (int, bool) {
+		_, ch, err := apDevice(radioBand(radio))
+		return ch, err == nil && ch > 0
+	}
+	// restartRadioFn tears one radio down and brings it up again: a plain
+	// "wifi reload" can leave a running access point on its old channel.
+	restartRadioFn = func(radio string) {
+		env.Run(30*time.Second, "wifi", "down", radio)
+		env.Run(30*time.Second, "wifi", "up", radio)
+	}
+	channelSettle = 10 * time.Second
 )
 
 // IsDFS reports whether a 5 GHz channel needs radar detection: the radio
@@ -78,6 +90,12 @@ func wirelessStatus() (map[string]radioStatus, error) {
 // driver refuses, a bad width), the previous configuration is restored so
 // Wi-Fi never stays down, and the error says what happened.
 func applyRadios(b *uci.Batch, radios []string, wait time.Duration) error {
+	return applyRadiosCh(b, radios, wait, nil)
+}
+
+// applyRadiosCh is applyRadios that also checks the radios really moved to
+// the wanted channels (radio -> channel; leave "auto" radios out).
+func applyRadiosCh(b *uci.Batch, radios []string, wait time.Duration, want map[string]int) error {
 	if env.Mock {
 		return b.Commit()
 	}
@@ -109,6 +127,9 @@ func applyRadios(b *uci.Batch, radios []string, wait time.Duration) error {
 			}
 		}
 		if ok {
+			if len(want) > 0 {
+				return verifyChannels(prev, radios, want, deadline)
+			}
 			return nil
 		}
 		if failed != "" || time.Now().After(deadline) {
@@ -118,6 +139,61 @@ func applyRadios(b *uci.Batch, radios []string, wait time.Duration) error {
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// verifyChannels waits for each radio to operate on its new channel. If one
+// keeps the old channel, the radio is restarted once; if it still won't
+// move, the previous settings come back and the error says why.
+func verifyChannels(prev []byte, radios []string, want map[string]int, deadline time.Time) error {
+	mismatch := func() (string, int) {
+		for r, ch := range want {
+			if got, ok := liveChannelFn(r); ok && got != ch {
+				return r, got
+			}
+		}
+		return "", 0
+	}
+	waitMatch := func(until time.Time) (string, int) {
+		for {
+			r, got := mismatch()
+			if r == "" || time.Now().After(until) {
+				return r, got
+			}
+			time.Sleep(time.Second)
+		}
+	}
+	r, got := waitMatch(time.Now().Add(channelSettle))
+	if r == "" {
+		return nil
+	}
+	env.Logf("wifi: %s still on channel %d (wanted %d), restarting the radio", r, got, want[r])
+	restartRadioFn(r)
+	if deadline.Before(time.Now().Add(channelSettle)) {
+		deadline = time.Now().Add(channelSettle)
+	}
+	time.Sleep(settle)
+	if r, got = waitMatch(deadline); r == "" {
+		return nil
+	}
+	ch := want[r]
+	os.WriteFile(wirelessConf, prev, 0o644)
+	reloadFn()
+	switch {
+	case RadioUplink(r) != "":
+		return fmt.Errorf("this radio is connected to %q for internet, so its Wi-Fi follows that network's channel (%d); the previous settings were restored", RadioUplink(r), got)
+	case IsDFS(ch):
+		return fmt.Errorf("channel %d needs a radar check and the driver moved to channel %d (radar or interference detected); the previous settings were restored", ch, got)
+	}
+	return fmt.Errorf("the radio stayed on channel %d: channel %d is probably not allowed for the router's country setting; the previous settings were restored", got, ch)
+}
+
+// wantChannel builds the expectation for applyRadiosCh ("auto" = none).
+func wantChannel(radio, channel string) map[string]int {
+	n, err := strconv.Atoi(channel)
+	if err != nil || n <= 0 {
+		return nil
+	}
+	return map[string]int{radio: n}
 }
 
 // waitFor is how long a radio may take to come up on a channel.

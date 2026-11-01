@@ -19,6 +19,8 @@ interface Band {
   txpower: number;
   hidden: boolean;
   channels: number[] | null;
+  liveChannel?: number;
+  uplink?: string;
 }
 interface Guest { enabled: boolean; ssid: string; key: string; encryption: string; exists: boolean }
 interface WifiState { bands: Band[]; guest: Guest; country: string; smartWifi: boolean }
@@ -98,6 +100,22 @@ const countries = () => [
   { id: 'NL', l: L('هلند', 'Netherlands') }, { id: 'CA', l: L('کانادا', 'Canada') }, { id: '00', l: L('جهانی (محدودترین)', 'World (most restrictive)') },
 ];
 
+/** wifiErr turns the router's radio errors into the page's language. */
+export function wifiErr(m: string): string {
+  let x: RegExpMatchArray | null;
+  if ((x = m.match(/stayed on channel (\d+): channel (\d+)/)))
+    return L(`رادیو روی کانال ${x[1]} ماند و به کانال ${x[2]} نرفت (حتی بعد از ری‌استارت کامل رادیو). احتمالاً این کانال با «کشور» تنظیم‌شده مجاز نیست؛ کشور را درست کنید یا کانال دیگری بزنید. تنظیمات قبلی برگشت.`,
+      `The radio stayed on channel ${x[1]} and would not move to ${x[2]} (even after a full restart). The channel is probably not allowed for the country setting; fix the country or pick another channel. The previous settings were restored.`);
+  if ((x = m.match(/channel (\d+) needs a radar check and the driver moved to channel (\d+)/)))
+    return L(`کانال ${x[1]} بررسی رادار لازم دارد و رادیو به کانال ${x[2]} رفت (رادار یا تداخل دیده شد). یک کانال غیر DFS (۳۶ تا ۴۸ یا ۱۴۹ تا ۱۶۵) بزنید. تنظیمات قبلی برگشت.`,
+      `Channel ${x[1]} needs a radar check and the radio moved to ${x[2]} (radar or interference). Pick a non-DFS channel (36–48 or 149–165). The previous settings were restored.`);
+  if ((x = m.match(/connected to "(.+)" for internet/)))
+    return L(`این رادیو برای اینترنت به «${x[1]}» وصل است و کانالش همیشه کانال همان شبکه است.`, `This radio is connected to “${x[1]}” for internet and always uses that network’s channel.`);
+  if (/did not start with these settings/.test(m))
+    return L('رادیو با این تنظیمات روشن نشد (کانال یا پهنای باند مجاز نیست). تنظیمات قبلی برگشت.', 'The radio did not start with these settings (channel or width not allowed). The previous settings were restored.');
+  return m;
+}
+
 function RadioCard({ b, onSaved }: { b: Band; onSaved: () => void }) {
   const init = () => ({ channel: b.channel || 'auto', htmode: b.htmode || '', txpower: b.txpower || 0 });
   const [f, setF] = useState(init);
@@ -114,8 +132,9 @@ function RadioCard({ b, onSaved }: { b: Band; onSaved: () => void }) {
         <span class="tiny faint" style="margin-inline-start:auto">{L('برای همهٔ شبکه‌های این باند', 'applies to every network on this band')}</span></summary>
       <div class="stack" style="gap:12px;padding-top:12px">
         <div class="grid g2" style="gap:12px">
-          <Field label={L('کانال', 'Channel')}>
-            <select class="select" value={f.channel} onChange={(e) => setF({ ...f, channel: (e.target as HTMLSelectElement).value })}>
+          <Field label={L('کانال', 'Channel')} hint={b.liveChannel ? <>{L('کانال واقعی الان: ', 'Running on channel ')}<b class="mono">{b.liveChannel}</b>
+            {b.channel !== 'auto' && +b.channel !== b.liveChannel && <span style="color:var(--danger-strong)"> · {L(`با تنظیم (${b.channel}) فرق دارد`, `differs from the setting (${b.channel})`)}</span>}</> : undefined}>
+            <select class="select" value={f.channel} disabled={!!b.uplink} onChange={(e) => setF({ ...f, channel: (e.target as HTMLSelectElement).value })}>
               <option value="auto">{L('خودکار', 'Automatic')}</option>
               {channelOptions(b.channels)}
             </select>
@@ -138,13 +157,14 @@ function RadioCard({ b, onSaved }: { b: Band; onSaved: () => void }) {
             </select>
           </Field>
         </div>
+        {b.uplink && <div class="callout info small"><div>{L(`این رادیو برای اینترنت به «${b.uplink}» وصل است، پس کانالش همیشه همان کانال مودم است و دستی عوض نمی‌شود.`, `This radio is connected to “${b.uplink}” for internet, so it always uses that network’s channel and can’t be set by hand.`)}</div></div>}
         {dfs && <div class="callout warn small"><div>{L('کانال‌های 52 تا 144 (DFS) قبل از شروع، یک دقیقه رادار را بررسی می‌کنند؛ در این مدت این باند خاموش است. اگر روتر رادار ببیند، خودش کانال را عوض می‌کند.', 'Channels 52–144 (DFS) listen for radar for a minute before starting; this band is off meanwhile. If radar is detected the router moves to another channel.')}</div></div>}
-        <div class="tiny faint">{L('بعد از ذخیره، روتر صبر می‌کند تا رادیو با تنظیمات جدید بالا بیاید؛ اگر بالا نیاید، تنظیمات قبلی خودکار برمی‌گردد.', 'After saving, the router waits for the radio to come up on the new settings; if it does not, the previous settings come back automatically.')}</div>
+        <div class="tiny faint">{L('بعد از ذخیره، روتر بررسی می‌کند رادیو واقعاً روی کانال جدید رفته باشد (اگر نرفته باشد یک بار رادیو را کامل ری‌استارت می‌کند)؛ اگر باز هم نشد، تنظیمات قبلی برمی‌گردد و علتش را می‌گوید.', 'After saving, the router checks the radio really moved to the new channel (restarting it fully once if needed); if it still won’t, the previous settings come back and the reason is shown.')}</div>
         <div><Btn sm kind="primary" busy={busy} onClick={async () => {
           setBusy(true);
           const body: Record<string, unknown> = { radio: b.radio, ...f };
           if (country && country !== origCountry) body.country = country;
-          const ok = await run(() => post('/wifi/radio', body), L('ذخیره شد و رادیو با تنظیمات جدید روشن است', 'Saved; the radio is up on the new settings'));
+          const ok = await run(() => post('/wifi/radio', body), L('ذخیره شد و رادیو واقعاً روی کانال جدید است', 'Saved; the radio is really on the new channel'), wifiErr);
           setBusy(false);
           if (ok) { setOrigCountry(country); onSaved(); }
         }}><Save size={15} />{busy ? (dfs ? L('در حال بررسی رادار (تا ۱ دقیقه)…', 'Radar check (up to 1 min)…') : L('در حال اعمال…', 'Applying…')) : L('ذخیرهٔ تنظیمات رادیو', 'Save radio settings')}</Btn></div>
@@ -180,7 +200,7 @@ function BandForm({ b, onSaved, net, routing, onRoute }: { b: Band; onSaved: () 
   const save = async () => {
     if (f.encryption === 'none' && !(await confirmDialog(L('شبکهٔ بدون رمز یعنی هر کسی در همسایگی می‌تواند وصل شود. ادامه می‌دهید؟', 'An open network lets anyone nearby join. Continue?'), true))) return;
     setBusy(true);
-    const ok = await run(() => post('/wifi/band', f), L('ذخیره شد و وای‌فای با تنظیمات جدید روشن است', 'Saved; Wi-Fi is up on the new settings'));
+    const ok = await run(() => post('/wifi/band', f), L('ذخیره شد و وای‌فای با تنظیمات جدید روشن است', 'Saved; Wi-Fi is up on the new settings'), wifiErr);
     setBusy(false);
     if (ok) onSaved();
   };

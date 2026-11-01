@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Cable, Combine, Info, Plus, Wifi } from 'lucide-preact';
 import { get, post } from '../api';
 import { L, lang, num, rate } from '../i18n';
-import { Badge, Btn, Card, CardHead, Setting, Skeleton, Toggle, run } from '../ui';
+import { Badge, Btn, Card, CardHead, Seg, Setting, Skeleton, Toggle, run } from '../ui';
 import { UplinkCard, type Uplink } from './Network';
 
 interface Link {
@@ -11,7 +11,7 @@ interface Link {
 }
 interface BalanceResp {
   status: { enabled: boolean; active: number; links: Link[]; rxBps: number; txBps: number };
-  settings: { enabled: boolean; weights?: Record<string, number> };
+  settings: { enabled: boolean; mode?: 'speed' | 'stable'; weights?: Record<string, number> };
   uplinks: Uplink[];
 }
 
@@ -57,6 +57,17 @@ export function BalanceCard() {
         sub={L('چند اینترنت (کابل و تا دو وای‌فای) با هم استفاده می‌شوند و سرعتشان جمع می‌شود', 'Several internet links (cable and up to two Wi-Fi) are used together and their speeds add up')}
         action={<Toggle on={d.settings.enabled} onChange={(v) => save({ enabled: v })} />} />
       <div class="card-body stack" style="gap:12px">
+        {d.settings.enabled && (
+          <Setting title={L('روش تجمیع', 'Aggregation mode')}
+            desc={(d.settings.mode || 'speed') === 'speed'
+              ? L('هر اتصال نوبتی از اینترنت بعدی می‌رود؛ دانلود منیجر (IDM، ADM) و تست سرعت با چند اتصال، سرعت هر دو را با هم می‌گیرند. اگر سایتی (مثل بعضی بانک‌ها) مدام از حساب بیرونتان کرد، «پایدار» را بزنید.',
+                'Each connection takes the next link in turn; download managers (IDM, ADM) and speed tests with several connections get both links’ speed. If a site (some banks) keeps logging you out, choose “Stable”.')
+              : L('هر سایت از هر دستگاه همیشه از یک اینترنت می‌رود (برای سایت‌هایی که ورود را به IP گره می‌زنند)؛ سرعت فقط وقتی جمع می‌شود که چند سایت یا چند دستگاه هم‌زمان کار کنند.',
+                'Each site from each device always uses one link (for sites that tie a login to the IP); speeds add up only across several sites or devices.')}>
+            <Seg value={d.settings.mode || 'speed'} onChange={(m) => save({ mode: m })}
+              items={[{ id: 'speed', label: L('حداکثر سرعت', 'Max speed') }, { id: 'stable', label: L('پایدار', 'Stable') }]} />
+          </Setting>
+        )}
         {d.settings.enabled && (
           working ? (
             <div class="callout ok small"><Combine size={18} /><div>
@@ -112,9 +123,10 @@ export function BalanceCard() {
         <div class="callout info small"><Info size={18} /><div>
           <b>{L('تجمیع چطور کار می‌کند', 'How aggregation works')}</b>
           <ul style="margin:4px 0 0;padding-inline-start:18px">
-            <li>{L('هر اتصال جدید به یکی از اینترنت‌ها (به نسبت وزن) سپرده می‌شود و تا آخر روی همان می‌ماند. پس وقتی چند دانلود، چند دستگاه یا اینترنت آزاد (که چند اتصال هم‌زمان باز می‌کند) کار می‌کنند، سرعت‌ها جمع می‌شوند؛ یک دانلود تکی همچنان سرعت یک اینترنت را دارد.',
-              'Each new connection is given to one link (by weight) and stays there. Several downloads, devices or the free internet (which opens many connections) add the speeds up; a single download still runs at one link’s speed.')}</li>
-            <li>{L('یک سایت از یک دستگاه همیشه از همان اینترنت باز می‌شود تا ورود به بانک و سایت‌ها نپرد.', 'A site from one device always uses the same link, so bank and site logins don’t break.')}</li>
+            <li><b>{L('برای دانلود قوی: ', 'For fast downloads: ')}</b>{L('با دانلود منیجر (IDM در ویندوز، ADM در اندروید) و ۸ تا ۱۶ اتصال دانلود کنید؛ دو اینترنت ۲۰ مگ حدود ۴۰ مگ می‌دهند. دانلود مستقیم مرورگر فقط یک اتصال است و سرعت یک اینترنت را می‌گیرد (هیچ روتری بدون سرور واسط نمی‌تواند یک اتصال تکی را بین دو اینترنت پخش کند).',
+              'Use a download manager (IDM on Windows, ADM on Android) with 8–16 connections; two 20 Mbit/s links give about 40. A plain browser download is one connection and gets one link’s speed (no router can split a single connection across two links without a server in between).')}</li>
+            <li>{L('هر اتصال جدید به یکی از اینترنت‌ها (به نسبت وزن) سپرده می‌شود و تا آخر روی همان می‌ماند. پس وقتی چند دانلود، چند دستگاه یا اینترنت آزاد (که چند اتصال هم‌زمان باز می‌کند) کار می‌کنند، سرعت‌ها جمع می‌شوند.',
+              'Each new connection is given to one link (by weight) and stays there, so several downloads, devices or the free internet (which opens many connections) add the speeds up.')}</li>
             <li>{L('هر ۱۰ ثانیه هر اینترنت آزمایش می‌شود؛ اگر یکی قطع شود کنار گذاشته می‌شود و بعد از برگشتن خودکار اضافه می‌شود.', 'Every link is tested every 10 s; one that drops is taken out and rejoins automatically when it recovers.')}</li>
             <li>{L('اگر سرور شما محدودیت تعداد IP دارد (Limit IP در پنل‌های x-ui)، با دو اینترنت دو IP می‌بیند. Mux را هم خاموش بگذارید تا اتصال‌ها پخش شوند.', 'If your server limits IPs per user (x-ui “Limit IP”), it will see two IPs. Keep Mux off so connections can spread.')}</li>
             <li>{L('هر رادیو (۲٫۴ و ۵ گیگ) فقط به یک مودم وصل می‌شود و وای‌فای خودش را روی کانال همان مودم می‌برد.', 'Each radio (2.4 and 5 GHz) joins one modem only, and moves its own Wi-Fi to that modem’s channel.')}</li>

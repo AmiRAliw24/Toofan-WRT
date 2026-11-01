@@ -440,6 +440,8 @@ func (c *Core) apply() {
 		PanelPorts: append(append([]int{}, c.PanelPorts...), luci.AltPort),
 		ForceDNS:   !cfg.DNS.ClientDNS,
 		Balance:    c.Balance.Plan(),
+		// "speed" (the default) spreads every connection.
+		BalanceSticky: cfg.Balance.Mode == "stable",
 	}
 	for _, l := range plan.Balance {
 		plan.WANDevs = append(plan.WANDevs, l.Dev)

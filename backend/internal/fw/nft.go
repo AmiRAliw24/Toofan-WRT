@@ -71,6 +71,9 @@ type Plan struct {
 	// Balance spreads connections over several internet links (speed
 	// aggregation). Empty = off: everything follows the main routing table.
 	Balance []BalanceLink
+	// BalanceSticky keeps a device on one link per destination ("stable"
+	// mode); otherwise every connection takes the next link in turn.
+	BalanceSticky bool
 	// ForceDNS answers every client DNS query (port 53, any server) from the
 	// router, so the DNS chosen in the panel applies to devices that have
 	// their own DNS set (8.8.8.8 on a phone, a PC's adapter settings …).
@@ -413,11 +416,13 @@ func pickMap(links []BalanceLink) (string, int) {
 // renderBalance: new connections pick a link once (kept in the conntrack
 // mark), and every packet of the connection carries that link's mark, so
 // the policy rules route it out of that link and its replies match.
-//   - LAN traffic that is not proxied: chosen by device + destination, so a
-//     site (a bank's session) always sees the same address.
-//   - The router's own connections (Xray's tunnel connections): chosen per
-//     connection in weighted turns (round robin), which is what adds the links' speeds up; Iranian
-//     destinations stay sticky like above.
+//   - "speed" mode: every new connection takes the next link in weighted
+//     turns (round robin), LAN and the router's own (Xray's tunnel
+//     connections) alike, so several connections to one server (download
+//     managers, speed tests) add the links' speeds up.
+//   - "stable" mode (BalanceSticky): LAN traffic keeps one link per device
+//     and destination, and the router's connections to Iranian addresses
+//     one per destination, so sites that tie a login to the IP keep it.
 //   - Connections coming in on a link stay on it.
 //
 // DNS and ICMP of the router itself are left to the main table.
@@ -445,7 +450,11 @@ func renderBalance(p Plan, all []string) string {
 		b.WriteString("\t\tip daddr @private4 return\n")
 		b.WriteString("\t\tfib daddr type local return\n")
 		if total > 0 {
-			fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ct mark set jhash ip saddr . ip daddr mod %d seed 0x70f4 map %s\n", BalanceMask, total, pick)
+			if p.BalanceSticky {
+				fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ct mark set jhash ip saddr . ip daddr mod %d seed 0x70f4 map %s\n", BalanceMask, total, pick)
+			} else {
+				fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ct mark set numgen inc mod %d map %s\n", BalanceMask, total, pick)
+			}
 		}
 		b.WriteString("\t\tjump lb_mark\n")
 	}
@@ -459,7 +468,9 @@ func renderBalance(p Plan, all []string) string {
 	b.WriteString("\t\tmeta l4proto { icmp, igmp } return\n")
 	b.WriteString("\t\tmeta l4proto { tcp, udp } th dport 53 return\n")
 	if total > 0 {
-		fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ip daddr @iran4 ct mark set jhash ip daddr mod %d seed 0x70f4 map %s\n", BalanceMask, total, pick)
+		if p.BalanceSticky {
+			fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ip daddr @iran4 ct mark set jhash ip daddr mod %d seed 0x70f4 map %s\n", BalanceMask, total, pick)
+		}
 		fmt.Fprintf(&b, "\t\tct state new ct mark and 0x%x == 0 ct mark set numgen inc mod %d map %s\n", BalanceMask, total, pick)
 	}
 	b.WriteString("\t\tjump lb_mark\n")

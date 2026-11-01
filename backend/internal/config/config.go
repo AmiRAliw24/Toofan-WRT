@@ -116,6 +116,11 @@ type DNS struct {
 // Balance spreads new connections over every healthy internet link.
 type Balance struct {
 	Enabled bool `json:"enabled"`
+	// Mode: "speed" (default; every connection takes the next link, so a
+	// download manager or speed test with several connections to one
+	// server adds the links up) or "stable" (a device keeps one link per
+	// site, for sites that tie a login to the IP address).
+	Mode string `json:"mode,omitempty"`
 	// Weights by netifd interface (wan, wwan, wwan2), 1-10; missing = 1.
 	Weights map[string]int `json:"weights,omitempty"`
 }

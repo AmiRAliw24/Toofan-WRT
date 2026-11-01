@@ -24,13 +24,20 @@ export function Toasts() {
 }
 
 /** run wraps an async action with success/error toasts. */
-export async function run<T>(fn: () => Promise<T>, ok?: string): Promise<T | undefined> {
+export async function run<T>(fn: () => Promise<T>, ok?: string, mapErr?: (msg: string) => string): Promise<T | undefined> {
   try {
     const r = await fn();
     if (ok) toast(ok);
     return r;
   } catch (e: any) {
-    toast(e?.message || L('خطا', 'Error'), true);
+    // fetch() itself failed: the page lost the router (often because the
+    // Wi-Fi this device uses was just restarted).
+    if (e instanceof TypeError) {
+      toast(L('ارتباط با روتر لحظه‌ای قطع شد (اگر وای‌فای را تغییر دادید طبیعی است). چند ثانیه صبر کنید و صفحه را تازه کنید.', 'Lost the connection to the router for a moment (normal after changing Wi-Fi). Wait a few seconds and refresh.'), true);
+      return undefined;
+    }
+    const msg = e?.message || L('خطا', 'Error');
+    toast(mapErr ? mapErr(msg) : msg, true);
     return undefined;
   }
 }

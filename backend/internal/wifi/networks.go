@@ -448,5 +448,5 @@ func SetRadio(r RadioSettings) error {
 	if radioDisabled(r.Radio) {
 		radios = nil
 	}
-	return applyRadios(b, radios, waitFor(r.Channel))
+	return applyRadiosCh(b, radios, waitFor(r.Channel), wantChannel(r.Radio, r.Channel))
 }

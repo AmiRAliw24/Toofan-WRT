@@ -3,6 +3,8 @@ package wifi
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -74,5 +76,58 @@ func TestApplyRadiosRevertsWhenRadioFails(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(wirelessConf); string(b) != "channel 1\n" {
 		t.Fatalf("not restored after timeout: %q", b)
+	}
+}
+
+// "wifi reload" can leave the access point on its old channel: the radio
+// is restarted once, and if it still won't move the old settings return.
+func TestApplyRadiosVerifiesChannel(t *testing.T) {
+	dir := t.TempDir()
+	wirelessConf = filepath.Join(dir, "wireless")
+	settle, channelSettle = 0, 1500*time.Millisecond
+	defer func(l func(string) (int, bool), r func(string)) {
+		statusFn, reloadFn, commitFn = wirelessStatus, reloadWifi, func(b *uci.Batch) error { return b.Commit() }
+		liveChannelFn, restartRadioFn, channelSettle = l, r, 10*time.Second
+	}(liveChannelFn, restartRadioFn)
+	os.WriteFile(wirelessConf, []byte("channel 1\n"), 0o644)
+	reloadFn = func() error { return nil }
+	commitFn = func(*uci.Batch) error { return os.WriteFile(wirelessConf, []byte("channel 11\n"), 0o644) }
+	statusFn = func() (map[string]radioStatus, error) { return map[string]radioStatus{"radio1": {Up: true}}, nil }
+
+	var live atomic.Int32
+	live.Store(1)
+	restarts := 0
+	liveChannelFn = func(string) (int, bool) { return int(live.Load()), true }
+	restartRadioFn = func(string) { restarts++; live.Store(11) }
+	if err := applyRadiosCh(uci.NewBatch(), []string{"radio1"}, 3*time.Second, map[string]int{"radio1": 11}); err != nil {
+		t.Fatal(err)
+	}
+	if restarts != 1 {
+		t.Fatalf("radio restarts = %d, want 1", restarts)
+	}
+	if b, _ := os.ReadFile(wirelessConf); string(b) != "channel 11\n" {
+		t.Fatalf("new channel not kept: %q", b)
+	}
+
+	// Never moves: previous settings back, error names the channel it stayed on.
+	os.WriteFile(wirelessConf, []byte("channel 1\n"), 0o644)
+	live.Store(1)
+	restarts = 0
+	restartRadioFn = func(string) { restarts++ }
+	err := applyRadiosCh(uci.NewBatch(), []string{"radio1"}, 3*time.Second, map[string]int{"radio1": 11})
+	if err == nil || !strings.Contains(err.Error(), "stayed on channel 1") {
+		t.Fatalf("got %v", err)
+	}
+	if b, _ := os.ReadFile(wirelessConf); string(b) != "channel 1\n" {
+		t.Fatalf("not restored: %q", b)
+	}
+
+	// Moves by itself after a moment: no restart needed.
+	os.WriteFile(wirelessConf, []byte("channel 1\n"), 0o644)
+	live.Store(1)
+	restarts = 0
+	go func() { time.Sleep(300 * time.Millisecond); live.Store(11) }()
+	if err := applyRadiosCh(uci.NewBatch(), []string{"radio1"}, 3*time.Second, map[string]int{"radio1": 11}); err != nil || restarts != 0 {
+		t.Fatalf("err=%v restarts=%d", err, restarts)
 	}
 }

@@ -54,13 +54,16 @@ func TestNftSyntax(t *testing.T) {
 	blockedOff.TProxy = false
 	forced := samplePlan()
 	forced.ForceDNS = true
+	sticky := samplePlan()
+	sticky.Balance = []BalanceLink{{Dev: "eth1", Mark: 0x10000, Weight: 1, Healthy: true}, {Dev: "wl-uplink", Mark: 0x20000, Weight: 1, Healthy: true}}
+	sticky.BalanceSticky = true
 	balanced := samplePlan()
 	balanced.Balance = []BalanceLink{{Dev: "eth1", Mark: 0x10000, Weight: 2, Healthy: true}, {Dev: "wl-uplink", Mark: 0x20000, Weight: 1, Healthy: true}, {Dev: "wl-uplink2", Mark: 0x30000, Weight: 1}}
 	oneLink := samplePlan()
 	oneLink.Balance = []BalanceLink{{Dev: "eth1", Mark: 0x10000, Weight: 1, Healthy: true}, {Dev: "wl-uplink", Mark: 0x20000}}
 	noneHealthy := samplePlan()
 	noneHealthy.Balance = []BalanceLink{{Dev: "eth1", Mark: 0x10000}}
-	for _, p := range []Plan{samplePlan(), blocked, blockedOff, forced, balanced, oneLink, noneHealthy, {}, {LANIfaces: []string{"br-lan"}, ForceDNS: true}} {
+	for _, p := range []Plan{samplePlan(), blocked, blockedOff, forced, balanced, sticky, oneLink, noneHealthy, {}, {LANIfaces: []string{"br-lan"}, ForceDNS: true}} {
 		cmd := exec.Command("nft", "-c", "-f", "-")
 		cmd.Stdin = strings.NewReader(Render(p) + RenderBridge(p))
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -122,6 +125,13 @@ func TestRenderBalance(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q in\n%s", want, s)
 		}
+	}
+	if strings.Contains(s, "jhash") {
+		t.Fatal("speed mode spreads every connection (no per-destination hash)")
+	}
+	p.BalanceSticky = true
+	if s := Render(p); strings.Count(s, "jhash") != 2 {
+		t.Fatalf("stable mode: LAN and Iranian destinations sticky\n%s", s)
 	}
 	if strings.Contains(Render(samplePlan()), "lb_pre") {
 		t.Fatal("balance chains without links")

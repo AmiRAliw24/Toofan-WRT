@@ -52,7 +52,7 @@ func TestLive(t *testing.T) {
 		t.Logf("%s dev=%s up=%v healthy=%v rtt=%d share=%.2f", l.Name, l.Device, l.Up, l.Healthy, l.RTT, l.Share)
 	}
 	lan := os.Getenv("LIVE_LAN")
-	script := fw.Render(fw.Plan{LANIfaces: []string{lan}, AllIfaces: []string{lan}, Balance: plan})
+	script := fw.Render(fw.Plan{LANIfaces: []string{lan}, AllIfaces: []string{lan}, Balance: plan, BalanceSticky: os.Getenv("LIVE_STICKY") != ""})
 	cmd := exec.Command("nft", "-f", "-")
 	cmd.Stdin = strings.NewReader(script)
 	if out, err := cmd.CombinedOutput(); err != nil {

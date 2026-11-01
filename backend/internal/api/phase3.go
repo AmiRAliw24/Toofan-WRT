@@ -335,6 +335,10 @@ func (s *Server) balanceSet(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	if in.Mode != "" && in.Mode != "speed" && in.Mode != "stable" {
+		writeErr(w, http.StatusBadRequest, "mode is speed or stable")
+		return
+	}
 	for k, v := range in.Weights {
 		if (k != "wan" && k != "wwan" && k != "wwan2") || v < 1 || v > 10 {
 			writeErr(w, http.StatusBadRequest, "weights are 1-10 per link")

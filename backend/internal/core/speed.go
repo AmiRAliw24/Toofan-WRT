@@ -337,7 +337,7 @@ func (s *SpeedTest) run(viaTunnel bool, srv SpeedServer, abort <-chan struct{}) 
 	if aborted(abort) {
 		return
 	}
-	down := measure(12*time.Second, 4, abort, func(stop <-chan struct{}, add func(int)) {
+	down := measure(12*time.Second, 6, abort, func(stop <-chan struct{}, add func(int)) {
 		for {
 			select {
 			case <-stop:
@@ -372,7 +372,7 @@ func (s *SpeedTest) run(viaTunnel bool, srv SpeedServer, abort <-chan struct{}) 
 	if aborted(abort) {
 		return
 	}
-	up := measure(10*time.Second, 3, abort, func(stop <-chan struct{}, add func(int)) {
+	up := measure(10*time.Second, 4, abort, func(stop <-chan struct{}, add func(int)) {
 		chunk := strings.Repeat("0", 2<<20)
 		for {
 			select {

@@ -28,6 +28,11 @@ type Band struct {
 	TxPower    int    `json:"txpower"` // dBm, 0 = default
 	Hidden     bool   `json:"hidden"`
 	Channels   []int  `json:"channels"`
+	// LiveChannel is the channel the access point really runs on (0 =
+	// not running); Uplink names the network this radio is connected to
+	// for internet (then the channel follows that network).
+	LiveChannel int    `json:"liveChannel"`
+	Uplink      string `json:"uplink,omitempty"`
 }
 
 type Guest struct {
@@ -135,6 +140,12 @@ func Get() (State, error) {
 	for _, r := range radioNames {
 		b := radios[r]
 		b.Channels = channels(r)
+		if b.Enabled {
+			if _, ch, err := apDevice(b.Band); err == nil {
+				b.LiveChannel = ch
+			}
+		}
+		b.Uplink = RadioUplink(r)
 		st.Bands = append(st.Bands, *b)
 	}
 	sort.Slice(st.Bands, func(i, j int) bool { return st.Bands[i].Band < st.Bands[j].Band })
@@ -250,6 +261,9 @@ func SetBand(in Band) error {
 			return errors.New("invalid channel")
 		}
 	}
+	if up := RadioUplink(cur.Radio); up != "" && ch != "auto" && ch != cur.Channel {
+		return fmt.Errorf("this radio is connected to %q for internet and must follow its channel (auto)", up)
+	}
 	b.Set(r+"channel", ch)
 	if w := fixWidth(cur.Band, ch, firstNonEmpty(in.HTMode, cur.HTMode)); w != "" {
 		b.Set(r+"htmode", w)
@@ -285,10 +299,12 @@ func SetBand(in Band) error {
 		b.Set(p+"ieee80211w", "1") // management frame protection, needed by WPA3
 	}
 	var radios []string
+	var want map[string]int
 	if in.Enabled {
 		radios = []string{cur.Radio}
+		want = wantChannel(cur.Radio, ch)
 	}
-	return applyRadios(b, radios, waitFor(ch))
+	return applyRadiosCh(b, radios, waitFor(ch), want)
 }
 
 func firstNonEmpty(s ...string) string {
@@ -332,10 +348,12 @@ func SetChannel(band string, channel int) error {
 				batch.Set("wireless."+b.Radio+".htmode", w)
 			}
 			var radios []string
+			var want map[string]int
 			if b.Enabled {
 				radios = []string{b.Radio}
+				want = wantChannel(b.Radio, ch)
 			}
-			return applyRadios(batch, radios, waitFor(ch))
+			return applyRadiosCh(batch, radios, waitFor(ch), want)
 		}
 	}
 	return errors.New("band not found")
