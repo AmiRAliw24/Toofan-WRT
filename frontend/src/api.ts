@@ -32,9 +32,34 @@ export const get = <T = any>(p: string) => api<T>('GET', p);
 export const post = <T = any>(p: string, b?: unknown) => api<T>('POST', p, b ?? {});
 export const del = <T = any>(p: string) => api<T>('DELETE', p);
 
+// Last answer per path. A page opens at once with what it showed last time
+// (or what was prefetched) and refreshes in the background, instead of
+// flashing a placeholder whose height differs from the real content.
+const cache = new Map<string, unknown>();
+const inflight = new Map<string, Promise<unknown>>();
+
+/** prefetch warms the cache for pages the user is likely to open. */
+export function prefetch(paths: string[]) {
+  for (const p of paths) {
+    if (cache.has(p) || inflight.has(p)) continue;
+    const q = get(p)
+      .then((d) => { cache.set(p, d); return d; })
+      .catch(() => undefined)
+      .finally(() => inflight.delete(p));
+    inflight.set(p, q);
+  }
+}
+
 /** usePoll fetches a resource and refreshes it while the tab is visible. */
 export function usePoll<T>(path: string | null, intervalMs = 3000) {
-  const [data, setData] = useState<T | null>(null);
+  const [data, setDataRaw] = useState<T | null>(() => (path && cache.has(path) ? (cache.get(path) as T) : null));
+  const setData = useCallback((d: T | null | ((prev: T | null) => T | null)) => {
+    setDataRaw((prev) => {
+      const next = typeof d === 'function' ? (d as (p: T | null) => T | null)(prev) : d;
+      if (path && next != null) cache.set(path, next);
+      return next;
+    });
+  }, [path]);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<number>();
   const alive = useRef(true);
@@ -43,6 +68,7 @@ export function usePoll<T>(path: string | null, intervalMs = 3000) {
     if (!path) return;
     try {
       const d = await get<T>(path);
+      cache.set(path, d);
       if (alive.current) {
         setData(d);
         setError(null);
@@ -54,6 +80,8 @@ export function usePoll<T>(path: string | null, intervalMs = 3000) {
 
   useEffect(() => {
     alive.current = true;
+    // A new path (e.g. another time window): show its cached copy at once.
+    if (path && cache.has(path)) setDataRaw(cache.get(path) as T);
     load();
     if (intervalMs > 0) {
       const tick = () => {

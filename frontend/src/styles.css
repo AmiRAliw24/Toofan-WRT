@@ -261,6 +261,11 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
+/* Keep room for the scrollbar on every page: otherwise (Windows, Linux
+   desktops) the whole layout jumps sideways whenever a page grows past
+   the screen height. */
+html { scrollbar-gutter: stable; }
+@supports not (scrollbar-gutter: stable) { html { overflow-y: scroll; } }
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -348,7 +353,7 @@ h1, h2, h3 { text-wrap: balance; }
   backdrop-filter: saturate(1.2) blur(10px);
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
 }
-.topbar-title { font-weight: 700; font-size: 15px; }
+.topbar-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .content {
   padding-block: 28px 40px;
   padding-inline: max(28px, env(safe-area-inset-left, 0px)) max(28px, env(safe-area-inset-right, 0px));
@@ -910,3 +915,8 @@ details.adv > div { padding: 4px 14px 12px; }
 .fw-opt.on { border-color: var(--primary); background: var(--primary-soft); }
 .fw-opt:disabled { cursor: default; opacity: .55; }
 .fw-opt a { pointer-events: auto; }
+
+/* Page change: a short fade only (no movement), so nothing appears to shake. */
+.page { animation: page-in 0.16s ease-out; }
+@keyframes page-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .page { animation: none; } }

@@ -5,7 +5,7 @@ import {
   Bell, Check, ChevronsLeft, ChevronsRight, Globe, Home as HomeIcon, Languages, LogOut, Menu, Palette, RefreshCw,
   Settings, Shield, Smartphone, Tornado, Wifi, Lock, Gamepad2,
 } from 'lucide-preact';
-import { authed, get, post, type Overview } from './api';
+import { authed, get, post, type Overview, prefetch } from './api';
 import { L, lang, setLang, num, ago, dateLocale } from './i18n';
 import { Btn, ConfirmHost, Modal, Toasts } from './ui';
 import { Home } from './pages/Home';
@@ -284,6 +284,14 @@ export function App() {
     return () => clearInterval(t);
   }, [authed.value]);
 
+  // Warm every page's data once logged in, so opening a section shows it at
+  // once (no placeholder that jumps when the real content arrives).
+  useEffect(() => {
+    if (!authed.value) return;
+    const t = setTimeout(() => prefetch(['/proxy', '/devices', '/schedules', '/wifi', '/wifi/networks', '/dns', '/gaming', '/speedtest', '/system', '/quality?window=24h', '/incidents', '/xray', '/geo', '/balance']), 400);
+    return () => clearTimeout(t);
+  }, [authed.value]);
+
   if (authed.value === null) return <div class="login-wrap"><span class="spinner" /></div>;
   if (!authed.value) return (<><Login /><Toasts /></>);
 
@@ -364,7 +372,7 @@ export function App() {
                 <a href="#/system">{L('رفتن به سیستم', 'Go to System')}</a></div>
             </div>
           )}
-          <PageBoundary key={r}>{page}</PageBoundary>
+          <PageBoundary key={r}><div class="page">{page}</div></PageBoundary>
         </main>
       </div>
       <nav class="mobile-bar">
