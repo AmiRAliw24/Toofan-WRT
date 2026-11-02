@@ -1,0 +1,163 @@
+{
+  "updated": 1793577600,
+  "providers": [
+    {
+      "id": "isp",
+      "name": "Modem / ISP",
+      "nameFa": "DNS مودم",
+      "servers": null,
+      "domestic": true
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "nameFa": "کلادفلر",
+      "servers": [
+        "1.1.1.1",
+        "1.0.0.1"
+      ],
+      "doh": "https://1.1.1.1/dns-query",
+      "domestic": false
+    },
+    {
+      "id": "cloudflare-security",
+      "name": "Cloudflare (malware)",
+      "nameFa": "کلادفلر (ضدبدافزار)",
+      "servers": [
+        "1.1.1.2",
+        "1.0.0.2"
+      ],
+      "doh": "https://security.cloudflare-dns.com/dns-query",
+      "domestic": false
+    },
+    {
+      "id": "cloudflare-family",
+      "name": "Cloudflare (family)",
+      "nameFa": "کلادفلر (خانواده)",
+      "servers": [
+        "1.1.1.3",
+        "1.0.0.3"
+      ],
+      "doh": "https://family.cloudflare-dns.com/dns-query",
+      "domestic": false
+    },
+    {
+      "id": "google",
+      "name": "Google",
+      "nameFa": "گوگل",
+      "servers": [
+        "8.8.8.8",
+        "8.8.4.4"
+      ],
+      "doh": "https://dns.google/dns-query",
+      "domestic": false
+    },
+    {
+      "id": "quad9",
+      "name": "Quad9",
+      "nameFa": "کواد۹",
+      "servers": [
+        "9.9.9.9",
+        "149.112.112.112"
+      ],
+      "doh": "https://dns.quad9.net/dns-query",
+      "domestic": false
+    },
+    {
+      "id": "adguard",
+      "name": "AdGuard (ads)",
+      "nameFa": "ادگارد (ضدتبلیغ)",
+      "servers": [
+        "94.140.14.14",
+        "94.140.15.15"
+      ],
+      "doh": "https://dns.adguard-dns.com/dns-query",
+      "domestic": false
+    },
+    {
+      "id": "shecan",
+      "name": "Shecan (free)",
+      "nameFa": "شکن (رایگان)",
+      "servers": [
+        "178.22.122.100",
+        "185.51.200.2"
+      ],
+      "domestic": true,
+      "note": "Shecan reports its free service is disrupted on some ISPs.",
+      "noteFa": "شکن اعلام کرده سرویس رایگانش روی بعضی اپراتورها اختلال دارد."
+    },
+    {
+      "id": "shecan-pro",
+      "name": "Shecan Pro",
+      "nameFa": "شکن حرفه‌ای",
+      "servers": [
+        "178.22.122.101",
+        "185.51.200.1"
+      ],
+      "domestic": true,
+      "paid": true,
+      "note": "Needs a Shecan Pro subscription with this line's IP registered.",
+      "noteFa": "اشتراک شکن حرفه‌ای و ثبت IP همین خط در پنل شکن لازم است."
+    },
+    {
+      "id": "electro",
+      "name": "Electro",
+      "nameFa": "الکترو",
+      "servers": [
+        "78.157.42.100",
+        "78.157.42.101"
+      ],
+      "domestic": true
+    },
+    {
+      "id": "begzar",
+      "name": "Begzar",
+      "nameFa": "بگذر",
+      "servers": [
+        "185.55.226.26",
+        "185.55.225.25"
+      ],
+      "domestic": true
+    },
+    {
+      "id": "radar",
+      "name": "Radar Game",
+      "nameFa": "رادار گیم",
+      "servers": [
+        "10.202.10.10",
+        "10.202.10.11"
+      ],
+      "domestic": true
+    },
+    {
+      "id": "403",
+      "name": "403 Online",
+      "nameFa": "۴۰۳ آنلاین",
+      "servers": [
+        "10.202.10.202",
+        "10.202.10.102"
+      ],
+      "domestic": true
+    },
+    {
+      "id": "pishgaman",
+      "name": "Pishgaman",
+      "nameFa": "پیشگامان",
+      "servers": [
+        "5.202.100.100",
+        "5.202.100.101"
+      ],
+      "domestic": true
+    },
+    {
+      "id": "shatel",
+      "name": "Shatel",
+      "nameFa": "شاتل",
+      "servers": [
+        "85.15.1.14",
+        "85.15.1.15"
+      ],
+      "domestic": true
+    }
+  ]
+}

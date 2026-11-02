@@ -92,6 +92,8 @@ func (s *Server) Handler() http.Handler {
 	s.phase2Routes(api)
 	s.phase3Routes(api)
 	api.HandleFunc("GET /api/dns", s.dnsGet)
+	api.HandleFunc("POST /api/dns/test", s.dnsTest)
+	api.HandleFunc("POST /api/dns/list/update", s.dnsUpdateList)
 	api.HandleFunc("POST /api/dns", s.dnsSet)
 
 	root := http.NewServeMux()
@@ -894,12 +896,26 @@ func (s *Server) speedHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) dnsGet(w http.ResponseWriter, r *http.Request) {
 	cfg := s.core.Store.Get()
 	writeJSON(w, map[string]any{
-		"config":    cfg.DNS,
-		"providers": proxy.Providers,
-		"tunnel":    s.core.Proxy.UseTunnelDNS(),
-		"isp":       s.core.Sampler.WAN().DNS,
-		"lockWan":   cfg.LockWAN,
+		"config":      cfg.DNS,
+		"providers":   proxy.Providers(),
+		"listUpdated": proxy.ProvidersUpdated(),
+		"tunnel":      s.core.Proxy.UseTunnelDNS(),
+		"isp":         s.core.Sampler.WAN().DNS,
+		"lockWan":     cfg.LockWAN,
 	})
+}
+
+func (s *Server) dnsTest(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.core.TestDNS())
+}
+
+func (s *Server) dnsUpdateList(w http.ResponseWriter, r *http.Request) {
+	n, err := proxy.UpdateProviders()
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"count": n, "updated": proxy.ProvidersUpdated()})
 }
 
 func (s *Server) dnsSet(w http.ResponseWriter, r *http.Request) {

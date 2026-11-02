@@ -119,6 +119,10 @@ func (c *Core) Start() {
 	go c.speedLoop()
 	go c.geoLoop()
 	go c.Balance.Run()
+	proxy.LoadProviders()
+	if !env.Mock {
+		go c.providersLoop()
+	}
 	firmware.RemoveLuci = luci.Remove
 	firmware.OnHealed = func() {
 		c.RequestApply()

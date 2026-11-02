@@ -1,17 +1,32 @@
 import { useEffect, useState } from 'preact/hooks';
-import { EyeOff, Globe2, Info, KeyRound, Lock, ShieldBan } from 'lucide-preact';
+import { Activity, EyeOff, Globe2, Info, KeyRound, Lock, RefreshCw, ShieldBan } from 'lucide-preact';
 import { post, usePoll } from '../api';
 import { onRefresh } from '../app';
-import { L, lang } from '../i18n';
-import { Badge, Btn, Card, CardHead, Field, PageHead, Setting, Skeleton, Toggle, run } from '../ui';
+import { L, ago, lang, num } from '../i18n';
+import { Badge, Btn, Card, CardHead, Field, PageHead, Setting, Skeleton, Toggle, run, toast } from '../ui';
 
-interface Provider { id: string; name: string; nameFa: string; servers: string[] | null; doh?: string; domestic: boolean }
+interface Provider { id: string; name: string; nameFa: string; servers: string[] | null; doh?: string; domestic: boolean; paid?: boolean; note?: string; noteFa?: string }
+interface DnsResult { id: string; ok: boolean; ms: number; server?: string; bypass?: boolean; error?: string }
 interface DnsCfg { provider: string; custom: string; mode: string; blockAds: boolean; blockMalware?: boolean; logSites: boolean; clientDns?: boolean }
-interface DnsResp { config: DnsCfg; providers: Provider[]; tunnel: boolean; isp: string[] | null; lockWan: boolean }
+interface DnsResp { config: DnsCfg; providers: Provider[]; tunnel: boolean; isp: string[] | null; lockWan: boolean; listUpdated?: number }
 
 export function Dns() {
   const { data, reload } = usePoll<DnsResp>('/dns', 10000);
   const [custom, setCustom] = useState<string | null>(null);
+  const [tests, setTests] = useState<Record<string, DnsResult> | null>(null);
+  const [busy, setBusy] = useState<'' | 'test' | 'list'>('');
+  const testAll = async () => {
+    setBusy('test');
+    const r = await run(() => post<DnsResult[]>('/dns/test'));
+    setBusy('');
+    if (r) setTests(Object.fromEntries(r.map((x) => [x.id, x])));
+  };
+  const updateList = async () => {
+    setBusy('list');
+    const r = await run(() => post<{ count: number }>('/dns/list/update'));
+    setBusy('');
+    if (r) { toast(L(`فهرست DNSها به‌روز شد (${num(r.count)} مورد)`, `DNS list updated (${r.count} entries)`)); reload(); }
+  };
   lang.value;
   useEffect(() => onRefresh(reload), [reload]);
   if (!data) return <Skeleton h={400} />;
@@ -52,10 +67,13 @@ export function Dns() {
         <div class="card-body">
           <div class="provider-grid">
             {data.providers.map((p) => (
-              <button class={'provider' + (c.provider === p.id ? ' on' : '')} onClick={() => save({ provider: p.id })}>
+              <button class={'provider' + (c.provider === p.id ? ' on' : '')} onClick={() => save({ provider: p.id })}
+                title={(lang.value === 'fa' ? p.noteFa : p.note) || undefined}>
                 <div class="provider-name">{lang.value === 'fa' ? p.nameFa : p.name}</div>
                 <div class="provider-ips">{p.id === 'isp' ? (data.isp || []).join(' ') || '—' : (p.servers || []).join(' ')}</div>
-                {p.domestic && p.id !== 'isp' && <div class="tiny faint">{L('ضدتحریم', 'anti-sanction')}</div>}
+                {p.domestic && p.id !== 'isp' && <div class="tiny faint">{L('ضدتحریم', 'anti-sanction')}{p.paid && <> · {L('پولی', 'paid')}</>}</div>}
+                {(p.noteFa || p.note) && <div class="tiny" style="color:var(--warn);margin-top:2px">{lang.value === 'fa' ? p.noteFa : p.note}</div>}
+                {tests?.[p.id] && <ProviderResult r={tests[p.id]} />}
               </button>
             ))}
             <button class={'provider' + (c.provider === 'custom' ? ' on' : '')} onClick={() => setCustom(c.custom || '')}>
@@ -63,6 +81,13 @@ export function Dns() {
               <div class="provider-ips">{c.provider === 'custom' ? c.custom : '…'}</div>
             </button>
           </div>
+          <div class="row wrap" style="margin-top:12px;gap:8px">
+            <Btn sm kind="primary" busy={busy === 'test'} onClick={testAll}><Activity size={15} />{L('تست همهٔ DNSها از روی روتر', 'Test every DNS from the router')}</Btn>
+            <Btn sm busy={busy === 'list'} onClick={updateList}><RefreshCw size={15} />{L('به‌روزرسانی فهرست DNSها', 'Update the DNS list')}</Btn>
+            <span class="tiny faint">{data.listUpdated ? L(`فهرست: ${ago(data.listUpdated)}`, `List: ${ago(data.listUpdated)}`) : L('فهرست داخلی پنل', 'built-in list')}</span>
+          </div>
+          {tests && <div class="tiny muted" style="margin-top:6px">{L('«ضدتحریم کار می‌کند» یعنی یک سایت تحریم‌شده (developer.android.com) به سرور واسط داخل ایران فرستاده شد. روتر هر روز فهرست را خودش هم به‌روز می‌کند.',
+            '“Anti-sanction works” means a sanctioned site (developer.android.com) was sent to the provider’s relay inside Iran. The router also refreshes the list daily by itself.')}</div>}
           {custom !== null && (() => {
             const [p1, p2 = ''] = custom.split(/[\s,]+/);
             const setPart = (i: number, v: string) => {
@@ -128,6 +153,18 @@ export function Dns() {
           </Setting>
         </div>
       </Card>
+    </div>
+  );
+}
+
+function ProviderResult({ r }: { r: DnsResult }) {
+  if (!r.ok) return <div class="tiny" style="color:var(--danger-strong);margin-top:4px">✗ {L('جواب نمی‌دهد', 'no answer')}</div>;
+  return (
+    <div class="tiny" style="margin-top:4px">
+      <span style="color:var(--ok)">✓ <bdi>{num(r.ms)} ms</bdi></span>
+      {r.bypass !== undefined && (r.bypass
+        ? <span style="color:var(--ok)"> · {L('ضدتحریم کار می‌کند', 'anti-sanction works')}</span>
+        : <span style="color:var(--warn)"> · {L('ضدتحریم کار نکرد', 'anti-sanction failed')}</span>)}
     </div>
   );
 }
