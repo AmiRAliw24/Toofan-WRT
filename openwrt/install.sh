@@ -42,9 +42,10 @@ if [ -n "$MISSING" ] && [ "$PM" = opkg ] && [ -d "pkgs/$DISTRIB_RELEASE" ]; then
 		f="$(ls "pkgs/$DISTRIB_RELEASE/${p}_"*.ipk 2>/dev/null | head -1)"
 		[ -n "$f" ] && LOCAL="$LOCAL $f"
 	done
-	# kmods first so xray's deps are all satisfied in one pass
+	# kmods and libraries (libiwinfo for rpcd-mod-iwinfo) go along, so every
+	# dependency is satisfied in one pass; installed ones are skipped.
 	# shellcheck disable=SC2086
-	[ -n "$LOCAL" ] && opkg install $(ls pkgs/$DISTRIB_RELEASE/kmod-nf-tproxy_*.ipk 2>/dev/null) $LOCAL || true
+	[ -n "$LOCAL" ] && opkg install $(ls pkgs/$DISTRIB_RELEASE/kmod-nf-tproxy_*.ipk pkgs/$DISTRIB_RELEASE/lib*.ipk 2>/dev/null) $LOCAL || true
 	MISSING=""
 	for p in $DEPS; do pm_has "$p" || MISSING="$MISSING $p"; done
 fi

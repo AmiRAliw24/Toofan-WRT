@@ -6,3 +6,7 @@ packages/arm_cortex-a7_neon-vfpv4/packages/v2ray-geosite-ir_202506300044-1_all.i
 packages/arm_cortex-a7_neon-vfpv4/base/ca-bundle_20241223-1_all.ipk
 targets/ipq40xx/chromium/packages/kmod-nf-tproxy_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk
 targets/ipq40xx/chromium/packages/kmod-nft-tproxy_5.15.162-1_arm_cortex-a7_neon-vfpv4.ipk
+packages/arm_cortex-a7_neon-vfpv4/base/rpcd_2023-07-01-c07ab2f9-1_arm_cortex-a7_neon-vfpv4.ipk
+packages/arm_cortex-a7_neon-vfpv4/base/rpcd-mod-iwinfo_2023-07-01-c07ab2f9-1_arm_cortex-a7_neon-vfpv4.ipk
+packages/arm_cortex-a7_neon-vfpv4/base/libiwinfo20230701_2023-07-01-ca79f641-1_arm_cortex-a7_neon-vfpv4.ipk
+packages/arm_cortex-a7_neon-vfpv4/base/libiwinfo-data_2023-07-01-ca79f641-1_arm_cortex-a7_neon-vfpv4.ipk

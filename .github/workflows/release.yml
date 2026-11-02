@@ -1,0 +1,63 @@
+name: Release
+
+# A new version is released by changing VERSION (and adding its section at
+# the top of CHANGELOG.md). The panel's updater reads manifest.json from the
+# latest release.
+on:
+  push:
+    branches: [main]
+    paths: [VERSION, .github/workflows/release.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          v="$(tr -d ' \n' < VERSION)"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" >/dev/null 2>&1; then echo "exists=1" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-go@v5
+        if: steps.v.outputs.exists != '1'
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+
+      - uses: actions/setup-node@v4
+        if: steps.v.outputs.exists != '1'
+        with:
+          node-version: 20
+
+      - name: Build
+        if: steps.v.outputs.exists != '1'
+        run: ./build.sh
+
+      - name: Test
+        if: steps.v.outputs.exists != '1'
+        run: |
+          cd backend
+          go vet ./...
+          go test ./...
+
+      - name: Publish
+        if: steps.v.outputs.exists != '1'
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          python3 tools/release.py "$v" "dist/toofanwrt-$v.tar.gz" "$GITHUB_REPOSITORY"
+          gh release create "v$v" "dist/toofanwrt-$v.tar.gz" dist/manifest.json \
+            --title "🌪️ ToofanWrt $v" --notes-file dist/release-notes.md \
+            --target "$GITHUB_SHA" --latest
