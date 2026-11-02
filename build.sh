@@ -28,29 +28,28 @@ bundle() { # list-file dest-subdir
 		cp "$f" "$OUT/pkgs/$rel/$2"
 	done
 }
-# Two Xray engines for armv7:
-# - main: the newest official release (checked against its published SHA-256);
+# Two Xray engines for armv7, both official XTLS releases checked against
+# their published SHA-256:
+# - main: the newest release;
 # - compat: 26.3.27, the newest that still allows VLESS/Trojan without TLS
-#   (later releases refuse it), from OpenWrt 25.12's feed (apk-v3 container).
+#   (later releases refuse it).
 XRAY_VERSION=26.10.31
-XRAY_ZIP_URL="https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/Xray-linux-arm32-v7a.zip"
 XRAY_ZIP_SHA256=2387f55239ee7799fd67d5382e79f589c1da07a97d993e86b058f2290b8e456b
-XRAY_COMPAT_APK_URL="https://downloads.openwrt.org/releases/25.12.6/packages/arm_cortex-a7_neon-vfpv4/packages/xray-core-26.3.27-r1.apk"
-mkdir -p openwrt/pkgs/xray
-[ -f "openwrt/pkgs/xray/xray-$XRAY_VERSION-armv7" ] || {
-	curl -fsSL -o openwrt/pkgs/xray/arm.zip "$XRAY_ZIP_URL"
-	echo "$XRAY_ZIP_SHA256  openwrt/pkgs/xray/arm.zip" | sha256sum -c -
+XRAY_COMPAT_VERSION=26.3.27
+XRAY_COMPAT_ZIP_SHA256=c7265ae13c63ca0241a037df4ef960ad37938c8a67d984cc08834b2cfdf5654b
+xray_fetch() { # version sha256 output
+	[ -f "$3" ] && return 0
+	curl -fsSL -o openwrt/pkgs/xray/arm.zip "https://github.com/XTLS/Xray-core/releases/download/v$1/Xray-linux-arm32-v7a.zip"
+	echo "$2  openwrt/pkgs/xray/arm.zip" | sha256sum -c -
 	python3 -I -c 'import sys, zipfile; open(sys.argv[2], "wb").write(zipfile.ZipFile(sys.argv[1]).read("xray"))' \
-		openwrt/pkgs/xray/arm.zip "openwrt/pkgs/xray/xray-$XRAY_VERSION-armv7"
+		openwrt/pkgs/xray/arm.zip "$3"
 	rm -f openwrt/pkgs/xray/arm.zip
 }
-[ -f openwrt/pkgs/xray/xray-compat-armv7 ] || {
-	curl -fsSL -o openwrt/pkgs/xray/arm.apk "$XRAY_COMPAT_APK_URL"
-	python3 tools/apk-extract-elf.py openwrt/pkgs/xray/arm.apk openwrt/pkgs/xray/xray-compat-armv7
-	rm -f openwrt/pkgs/xray/arm.apk
-}
+mkdir -p openwrt/pkgs/xray
+xray_fetch "$XRAY_VERSION" "$XRAY_ZIP_SHA256" "openwrt/pkgs/xray/xray-$XRAY_VERSION-armv7"
+xray_fetch "$XRAY_COMPAT_VERSION" "$XRAY_COMPAT_ZIP_SHA256" "openwrt/pkgs/xray/xray-compat-$XRAY_COMPAT_VERSION-armv7"
 cp "openwrt/pkgs/xray/xray-$XRAY_VERSION-armv7" "$OUT/bin/xray-armv7"
-cp openwrt/pkgs/xray/xray-compat-armv7 "$OUT/bin/xray-compat-armv7"
+cp "openwrt/pkgs/xray/xray-compat-$XRAY_COMPAT_VERSION-armv7" "$OUT/bin/xray-compat-armv7"
 chmod 755 "$OUT/bin/xray-armv7" "$OUT/bin/xray-compat-armv7"
 
 for list in openwrt/offline-*.list; do bundle "$list" .; done
