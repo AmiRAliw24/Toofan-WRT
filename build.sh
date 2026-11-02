@@ -2,7 +2,7 @@
 # Builds the web UI, cross-compiles the panel and packs a release tarball.
 set -e
 cd "$(dirname "$0")"
-VERSION="${VERSION:-$(date +%Y.%m.%d)-$(git rev-parse --short HEAD 2>/dev/null || echo dev)}"
+VERSION="${VERSION:-$(cat VERSION 2>/dev/null || echo dev)}"
 OUT=dist/toofanwrt
 rm -rf dist && mkdir -p "$OUT/bin"
 

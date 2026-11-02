@@ -67,11 +67,11 @@ func (s *Server) updater() *update.Updater {
 }
 
 func (s *Server) updateGet(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"status": s.updater().Status(), "source": s.core.Store.Get().UpdateURL})
+	writeJSON(w, map[string]any{"status": s.updater().Status(), "source": s.updateURL()})
 }
 
 func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
-	m, err := s.updater().Check(s.core.Store.Get().UpdateURL)
+	m, err := s.updater().Check(s.updateURL())
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -86,7 +86,7 @@ func (s *Server) updateInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The manifest is fetched again here rather than trusted from the browser.
-	m, err := u.Check(s.core.Store.Get().UpdateURL)
+	m, err := u.Check(s.updateURL())
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -136,6 +136,17 @@ func (s *Server) updateUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "status": u.Status()})
+}
+
+// DefaultUpdateURL is the manifest of the latest ToofanWrt release on
+// GitHub; a custom source set on the System page replaces it.
+const DefaultUpdateURL = "https://github.com/AmiRAliw24/Toofan-WRT/releases/latest/download/manifest.json"
+
+func (s *Server) updateURL() string {
+	if u := s.core.Store.Get().UpdateURL; u != "" {
+		return u
+	}
+	return DefaultUpdateURL
 }
 
 func (s *Server) updateSource(w http.ResponseWriter, r *http.Request) {

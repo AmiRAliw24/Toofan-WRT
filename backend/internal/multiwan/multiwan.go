@@ -79,6 +79,7 @@ type Manager struct {
 	links   map[string]*Link
 	enabled bool
 	weights map[string]int
+	routeMu sync.Mutex     // serializes route changes (tick vs. Stop)
 	routed  map[int]string // slot -> "dev gw" currently in its table
 	planKey string
 	// OnChange asks for the firewall to be rendered again.
@@ -346,6 +347,8 @@ var probe = func(dev string) (int, bool) {
 // syncRoutes keeps one routing table and one ip rule per link while
 // aggregation is active, and removes them otherwise.
 func (m *Manager) syncRoutes(active bool, links map[string]Link) {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	for _, c := range Candidates {
 		l := links[c.Name]
 		table, pref := tableOf(c.Slot), prefOf(c.Slot)
